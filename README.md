@@ -58,7 +58,7 @@ cargo run -p ekips-compiler --example check -- examples/*.ekips
 cargo run -p ekips-compiler --example check -- --de --ast examples/square.ekips
 ```
 
-The language reference is in [`docs/language.md`](docs/language.md).
+The documentation is in [`docs/`](docs/README.md) (English and German): language reference in [English](docs/en/language.md) and [German](docs/de/language.md).
 
 ## Credits
 

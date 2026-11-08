@@ -3,7 +3,8 @@
 //! Ekips Prime Pro uses a TypeScript-like syntax without type annotations,
 //! with unit suffixes on numbers (`20cm`, `90deg`, `2s`, `50%`) and
 //! `async`/`await` for running things at the same time. See
-//! `docs/language.md` for the full reference.
+//! `docs/en/language.md` (English) or `docs/de/language.md` (German) for the
+//! full reference.
 //!
 //! **Status:** lexer and parser are done. Name resolution, unit checking,
 //! code generation and the VM follow.
