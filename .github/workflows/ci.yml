@@ -33,4 +33,4 @@ jobs:
           targets: thumbv7em-none-eabihf
       - uses: Swatinem/rust-cache@v2
       # These crates must build for the hub, so no std may sneak in.
-      - run: cargo build --target thumbv7em-none-eabihf -p ekips-hub-api -p ekips-bytecode
+      - run: cargo build --target thumbv7em-none-eabihf -p ekips-hub-api -p ekips-bytecode -p ekips-vm

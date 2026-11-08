@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/hub-api", "crates/bytecode", "crates/compiler"]
+members = ["crates/hub-api", "crates/bytecode", "crates/compiler", "crates/vm"]
 
 [workspace.package]
 version = "0.2.0"

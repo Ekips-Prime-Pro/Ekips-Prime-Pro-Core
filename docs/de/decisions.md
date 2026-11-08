@@ -63,3 +63,49 @@ zuletzt. Jeder Eintrag sagt, was entschieden wurde und warum.
   fahren statt 90 drehen). Sie zu finden, bevor sich der Roboter bewegt, spart
   viel Zeit. Ohne zusammengesetzte Einheiten bleiben die Regeln einfach genug
   für Klasse 7.
+
+## D7 – Stapelbasierte Bytecode-VM, `no_std` + `alloc`
+
+- **Entscheidung:** Programme werden in einen kompakten Bytecode für eine
+  Stapelmaschine übersetzt und von einem Interpreter in `ekips-vm`
+  ausgeführt. Die VM benutzt `alloc` (`Vec`, `Rc`) und braucht in der
+  Firmware einen globalen Allokator. Zahlen sind `f32` mit ihrer Art;
+  Einheiten werden beim Übersetzen umgerechnet.
+- **Warum:** Eine Bytecode-Datei ist klein für die Übertragung per USB und
+  kann vor dem Start geprüft werden (Version). Eine Stapelmaschine ist am
+  einfachsten zu erzeugen und zu interpretieren. `alloc` ermöglicht Listen,
+  Closures und viele gleichzeitige Tasks ohne feste Grenzen; der Hub hat
+  320 KiB RAM, genug für FLL-Programme. `f32` passt zur FPU des Hubs.
+
+## D8 – Kooperativer Scheduler mit einer Zeitscheibe pro Task
+
+- **Entscheidung:** Jede laufende `async`-Funktion ist eine Task.
+  `Vm::tick` gibt jeder bereiten Task ihre eigene Zeitscheibe an Befehlen;
+  wartende Tasks werden geweckt, indem ihr Promise abgefragt wird
+  (`motor_done`, `drive_done`, Zeit, Bedingung). Der Aufruf einer
+  `async`-Funktion führt sie sofort bis zum ersten Warten aus.
+- **Warum:** Keine Threads, keine Interrupts und kein Rust-`async` nötig,
+  daher läuft es gleich auf dem Hub und auf dem PC. Das Abfragen passt zum
+  `Hardware`-Trait, dessen Bewegungsbefehle eine Bewegung nur *starten*.
+  Eine Zeitscheibe pro Task heißt, dass eine Endlosschleife in einer Task
+  den Roboter nicht einfrieren kann. Dass `async`-Funktionen sofort starten,
+  entspricht JavaScript, so passt das Bild, das Schülerinnen und Schüler aus
+  dem Web kennen.
+
+## D9 – Promises von Bewegungen sind fertig, wenn das Gerät einen neuen Befehl bekommt
+
+- **Entscheidung:** Ein Promise von `rotate`/`drive`/`turn` ist fertig, wenn
+  die Bewegung beendet ist **oder** wenn derselbe Motor bzw. dieselbe
+  DriveBase einen anderen Befehl bekommt (zum Beispiel `robot.stop()` nach
+  einem `Promise.race`).
+- **Warum:** Sonst würde eine angehaltene Bewegung nie fertig, und jede Task,
+  die darauf wartet, würde hängen bleiben.
+
+## D10 – Die Mock-Hardware liegt im VM-Crate
+
+- **Entscheidung:** `ekips_vm::MockHub` (simulierte Uhr, realistische
+  Bewegungszeiten, geplante Sensorwerte, Text-Protokoll) ist Teil von
+  `ekips-vm`.
+- **Warum:** Jeder Test, das Beispiel und der Simulator im Tools-Repository
+  brauchen denselben einfachen, deterministischen Hub. Er ist ebenfalls
+  `no_std` und schränkt das Crate deshalb nicht ein.

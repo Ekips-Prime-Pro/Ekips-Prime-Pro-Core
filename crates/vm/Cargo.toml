@@ -1,0 +1,20 @@
+[package]
+name = "ekips-vm"
+description = "no_std bytecode interpreter with a cooperative scheduler for Ekips Prime Pro"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+ekips-hub-api.workspace = true
+ekips-bytecode.workspace = true
+libm = "0.2"
+
+[dev-dependencies]
+ekips-compiler = { path = "../compiler" }
+
+[lints]
+workspace = true

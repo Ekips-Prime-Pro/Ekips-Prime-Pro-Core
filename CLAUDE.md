@@ -29,8 +29,8 @@ include Core via a **Git tag** (`v0.x.y`).
 |---|---|
 | `crates/hub-api` | `no_std`. `Hardware` trait, `Port`, `Color`, device kinds |
 | `crates/bytecode` | `no_std` + `alloc`. Program format, instruction set (`Op`), `Dim`, native function ids |
-| `crates/compiler` | Lexer, parser, semantic analysis with unit checking, standard library table (code generation planned) |
-| `crates/vm` | *(planned)* `no_std` + `alloc`. Bytecode interpreter with cooperative scheduler, mock hardware |
+| `crates/compiler` | Lexer, parser, semantic analysis with unit checking, standard library table, code generation |
+| `crates/vm` | `no_std` + `alloc`. Bytecode interpreter with cooperative scheduler, mock hardware, `run` example |
 | `examples/*.ekips` | Example programs; all of them must compile without problems |
 | `docs/en`, `docs/de` | Wiki/documentation, always in both languages |
 | `CHANGELOG.md` | Changes per tagged version |
@@ -50,7 +50,7 @@ include Core via a **Git tag** (`v0.x.y`).
    cargo fmt --all --check
    cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
-   cargo build --target thumbv7em-none-eabihf -p ekips-hub-api -p ekips-bytecode
+   cargo build --target thumbv7em-none-eabihf -p ekips-hub-api -p ekips-bytecode -p ekips-vm
    ```
    New features need tests.
 6. Small, meaningful commits; push regularly.
@@ -78,5 +78,7 @@ include Core via a **Git tag** (`v0.x.y`).
 cargo test --workspace
 cargo run -p ekips-compiler --example check -- examples/*.ekips
 cargo run -p ekips-compiler --example check -- --de examples/square.ekips
+cargo run -p ekips-compiler --example check -- --asm examples/square.ekips   # bytecode
 cargo run -p ekips-compiler --example gen-docs     # regenerate docs/*/stdlib.md
+cargo run -p ekips-vm --example run -- examples/square.ekips   # run on the mock hub
 ```

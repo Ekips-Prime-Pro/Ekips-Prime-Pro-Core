@@ -12,8 +12,8 @@ auch dafür gedacht, einem KI-Assistenten als Kontext gegeben zu werden.
 > **Umsetzungsstand:** Der Parser kann die gesamte Syntax auf dieser Seite.
 > Die semantische Analyse prüft Namen, Gültigkeitsbereiche und die
 > Benutzung der Standardbibliothek (siehe [compiler.md](compiler.md),
-> vollständige Liste in [stdlib.md](stdlib.md)) und Einheiten.
-> Codeerzeugung und die VM sind noch nicht geschrieben.
+> vollständige Liste in [stdlib.md](stdlib.md)) und Einheiten. Programme
+> werden in Bytecode übersetzt und laufen in der VM ([vm.md](vm.md)).
 
 ## 1. Ein erstes Programm
 
@@ -72,7 +72,7 @@ ein Fehler, ebenso wie einem Befehl die falsche Art zu geben
 `%` hinter einer Zahl ist ein Prozentwert. Zwischen zwei Werten ist es der
 Rest-Operator: `10 % 3` ist `1`.
 
-## 4. Standardbibliothek (geplante API)
+## 4. Standardbibliothek
 
 ### Aufbau
 

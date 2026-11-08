@@ -59,3 +59,44 @@ says what was decided and why.
 - **Why:** Most robot bugs in FLL are wrong numbers (driving 90 instead of
   turning 90). Catching them before the robot moves saves a lot of time.
   Leaving out compound units keeps the rules simple enough for grade 7.
+
+## D7 – Stack-based bytecode VM, `no_std` + `alloc`
+
+- **Decision:** Programs are compiled to a compact stack-machine bytecode
+  and run by an interpreter in `ekips-vm`. The VM uses `alloc` (`Vec`,
+  `Rc`) and needs a global allocator in the firmware. Numbers are `f32`
+  tagged with their kind; units are converted at compile time.
+- **Why:** A bytecode file is small to send over USB and can be checked
+  (version) before it runs. A stack machine is the simplest to generate
+  and to interpret. `alloc` makes lists, closures and many concurrent tasks
+  possible without fixed limits; the hub has 320 KiB RAM, enough for FLL
+  programs. `f32` matches the hub's FPU.
+
+## D8 – Cooperative scheduler with one time slice per task
+
+- **Decision:** Each running `async` function is a task. `Vm::tick` gives
+  every ready task its own slice of instructions; waiting tasks are woken
+  by polling their Promise (`motor_done`, `drive_done`, time, condition).
+  Calling an `async` function runs it right away until its first wait.
+- **Why:** No threads, no interrupts and no Rust `async` needed, so it runs
+  the same on the hub and on a PC. Polling fits the `Hardware` trait, whose
+  movement commands only *start* a movement. A slice per task means an
+  endless loop in one task can not freeze the robot. Starting async
+  functions right away matches JavaScript, so students' mental model from
+  the web holds.
+
+## D9 – Promises of movements finish when the device gets a new command
+
+- **Decision:** A `rotate`/`drive`/`turn` Promise is done when the movement
+  is finished **or** when the same motor/drive base gets another command
+  (for example `robot.stop()` after a `Promise.race`).
+- **Why:** Otherwise a stopped movement would never finish and every task
+  waiting for it would hang.
+
+## D10 – Mock hardware lives in the VM crate
+
+- **Decision:** `ekips_vm::MockHub` (simulated clock, realistic movement
+  times, scripted sensors, text log) is part of `ekips-vm`.
+- **Why:** Every test, the example runner and the Tools repository's
+  simulator need the same simple, deterministic hub. It is `no_std` as
+  well, so it does not limit the crate.

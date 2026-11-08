@@ -9,6 +9,7 @@ Dieses Wiki gibt es in zwei Sprachen mit gleichem Inhalt.
 | Standard library (generated) / Standardbibliothek (erzeugt) | [en/stdlib.md](en/stdlib.md) | [de/stdlib.md](de/stdlib.md) |
 | Compiler and semantic analysis / Compiler und semantische Analyse | [en/compiler.md](en/compiler.md) | [de/compiler.md](de/compiler.md) |
 | Bytecode format and instruction set / Bytecode-Format und Befehlssatz | [en/bytecode.md](en/bytecode.md) | [de/bytecode.md](de/bytecode.md) |
+| Virtual machine and scheduler / Virtuelle Maschine und Scheduler | [en/vm.md](en/vm.md) | [de/vm.md](de/vm.md) |
 | Architecture decisions / Architekturentscheidungen | [en/decisions.md](en/decisions.md) | [de/decisions.md](de/decisions.md) |
 
 ## Rules for this wiki / Regeln für dieses Wiki

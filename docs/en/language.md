@@ -11,8 +11,8 @@ to be given to an AI assistant as context.
 > **Implementation status:** the parser implements all syntax on this page.
 > Semantic analysis checks names, scopes and the use of the standard
 > library (see [compiler.md](compiler.md), full list of built-ins in
-> [stdlib.md](stdlib.md)) and units. Code generation and the VM are not
-> written yet.
+> [stdlib.md](stdlib.md)) and units. Programs compile to bytecode and run
+> in the VM ([vm.md](vm.md)).
 
 ## 1. A first program
 
@@ -68,7 +68,7 @@ fits every kind (`hub.heading > 0`). All rules: [compiler.md](compiler.md#unit-c
 `%` after a number is a percentage. Between two values it is the remainder
 operator: `10 % 3` is `1`.
 
-## 4. Standard library (planned API)
+## 4. Standard library
 
 ### Setup
 
