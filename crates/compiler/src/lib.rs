@@ -6,14 +6,17 @@
 //! `docs/en/language.md` (English) or `docs/de/language.md` (German) for the
 //! full reference.
 //!
-//! **Status:** lexer and parser are done. Name resolution, unit checking,
-//! code generation and the VM follow.
+//! Pipeline: [`lexer`] → [`parser`] → [`sema`] (names, scopes, types).
+//! The standard library is described in one data table, [`stdlib`].
 //!
 //! ```
-//! let source = "async function main() {\n  await robot.drive(20cm);\n}\n";
-//! let result = ekips_compiler::parse(source);
+//! let source = "const robot = new DriveBase(new Motor(Port.A), new Motor(Port.B), 56mm, 112mm);\n\
+//!               async function main() {\n  await robot.drive(20cm);\n}\n";
+//! let result = ekips_compiler::check(source);
 //! assert!(result.diagnostics.is_empty());
-//! assert_eq!(result.program.body.len(), 1);
+//!
+//! let result = ekips_compiler::check("async function main() { await robot.drvie(20cm); }");
+//! assert!(result.has_errors()); // `robot` is unknown
 //! ```
 
 pub mod ast;
@@ -21,10 +24,13 @@ pub mod diagnostic;
 pub mod keywords;
 pub mod lexer;
 pub mod parser;
+pub mod sema;
 pub mod span;
+pub mod stdlib;
 mod suggest;
+pub mod types;
 
-pub use diagnostic::{Diagnostic, Lang};
+pub use diagnostic::{Diagnostic, Lang, Severity};
 
 /// Result of [`parse`]: the syntax tree plus every problem found.
 ///
@@ -39,9 +45,9 @@ pub struct ParseResult {
 }
 
 impl ParseResult {
-    /// `true` if there is at least one problem.
+    /// `true` if there is at least one error (warnings do not count).
     pub fn has_errors(&self) -> bool {
-        !self.diagnostics.is_empty()
+        self.diagnostics.iter().any(Diagnostic::is_error)
     }
 }
 
@@ -53,6 +59,45 @@ pub fn parse(source: &str) -> ParseResult {
     diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     ParseResult {
         program,
+        diagnostics,
+    }
+}
+
+/// Result of [`check`]: syntax tree, analysis results and all problems.
+#[derive(Debug, Clone)]
+pub struct CheckResult {
+    /// The syntax tree (possibly incomplete if there were syntax errors)
+    pub program: ast::Program,
+    /// Names, bindings and members resolved by semantic analysis
+    pub analysis: sema::Analysis,
+    /// All problems (errors and warnings), in source order
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl CheckResult {
+    /// `true` if there is at least one error (warnings do not count).
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics.iter().any(Diagnostic::is_error)
+    }
+}
+
+/// Parses and analyzes a source file.
+///
+/// If the parser found syntax errors, only those are reported: a broken
+/// line often hides a declaration, and the resulting "unknown name" errors
+/// would only confuse. The analysis is still returned, so editors can use it.
+pub fn check(source: &str) -> CheckResult {
+    let parsed = parse(source);
+    let analysis = sema::analyze(&parsed.program);
+    let mut diagnostics = parsed.diagnostics;
+    if !diagnostics.iter().any(Diagnostic::is_error) {
+        diagnostics.extend(analysis.diagnostics.iter().cloned());
+    }
+    diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
+    diagnostics.dedup();
+    CheckResult {
+        program: parsed.program,
+        analysis,
         diagnostics,
     }
 }

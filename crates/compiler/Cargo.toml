@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 ekips-hub-api.workspace = true
+ekips-bytecode.workspace = true
 
 [lints]
 workspace = true

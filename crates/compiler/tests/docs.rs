@@ -48,3 +48,18 @@ fn every_page_is_linked_from_the_index() {
         }
     }
 }
+
+#[test]
+fn stdlib_reference_is_up_to_date() {
+    use ekips_compiler::Lang;
+    use ekips_compiler::stdlib::reference_markdown;
+    for (lang, dir) in [(Lang::En, "en"), (Lang::De, "de")] {
+        let path = docs_dir().join(dir).join("stdlib.md");
+        let committed = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            committed == reference_markdown(lang),
+            "{} is outdated; run `cargo run -p ekips-compiler --example gen-docs`",
+            path.display()
+        );
+    }
+}

@@ -10,9 +10,10 @@ Diese Datei ist die einzige verbindliche Beschreibung der Sprache. Sie ist
 auch dafür gedacht, einem KI-Assistenten als Kontext gegeben zu werden.
 
 > **Umsetzungsstand:** Der Parser kann die gesamte Syntax auf dieser Seite.
-> Die Standardbibliothek (Abschnitt 4) ist die geplante API;
-> Namensauflösung, Einheitenprüfung, Codeerzeugung und die VM sind noch
-> nicht geschrieben.
+> Die semantische Analyse prüft Namen, Gültigkeitsbereiche und die
+> Benutzung der Standardbibliothek (siehe [compiler.md](compiler.md),
+> vollständige Liste in [stdlib.md](stdlib.md)). Einheitenprüfung,
+> Codeerzeugung und die VM sind noch nicht geschrieben.
 
 ## 1. Ein erstes Programm
 

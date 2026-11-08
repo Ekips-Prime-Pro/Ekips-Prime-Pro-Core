@@ -9,8 +9,10 @@ This file is the single source of truth for the language. It is also meant
 to be given to an AI assistant as context.
 
 > **Implementation status:** the parser implements all syntax on this page.
-> The standard library (section 4) is the planned API; name resolution,
-> unit checking, code generation and the VM are not written yet.
+> Semantic analysis checks names, scopes and the use of the standard
+> library (see [compiler.md](compiler.md), full list of built-ins in
+> [stdlib.md](stdlib.md)). Unit checking, code generation and the VM are
+> not written yet.
 
 ## 1. A first program
 

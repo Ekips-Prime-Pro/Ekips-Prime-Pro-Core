@@ -28,8 +28,8 @@ include Core via a **Git tag** (`v0.x.y`).
 | Path | Purpose |
 |---|---|
 | `crates/hub-api` | `no_std`. `Hardware` trait, `Port`, `Color`, device kinds |
-| `crates/bytecode` | `no_std`. Program container format (instruction set planned) |
-| `crates/compiler` | Lexer, parser (semantic analysis, unit checking, code generation planned) |
+| `crates/bytecode` | `no_std`. Program container format, `Dim`, native function ids (instruction set planned) |
+| `crates/compiler` | Lexer, parser, semantic analysis, standard library table (unit checking, code generation planned) |
 | `crates/vm` | *(planned)* `no_std` + `alloc`. Bytecode interpreter with cooperative scheduler, mock hardware |
 | `examples/*.ekips` | Example programs; all of them must compile without problems |
 | `docs/en`, `docs/de` | Wiki/documentation, always in both languages |
@@ -60,6 +60,14 @@ include Core via a **Git tag** (`v0.x.y`).
 
 ## Architecture notes
 
+- The standard library is described in **one data table**
+  (`crates/compiler/src/stdlib.rs`). Semantic analysis, code generation,
+  generated docs (`docs/*/stdlib.md`) and later the LSP all read from it.
+  Do not duplicate stdlib knowledge elsewhere. After changing it, run
+  `cargo run -p ekips-compiler --example gen-docs`.
+- Native function ids (the ABI between compiler and VM) live in
+  `ekips-bytecode` (`Native`). A test checks that the table and the ids agree.
+
 - The VM never talks to hardware directly, only through
   `ekips_hub_api::Hardware`.
 - Decisions are recorded in `docs/*/decisions.md`.
@@ -70,4 +78,5 @@ include Core via a **Git tag** (`v0.x.y`).
 cargo test --workspace
 cargo run -p ekips-compiler --example check -- examples/*.ekips
 cargo run -p ekips-compiler --example check -- --de examples/square.ekips
+cargo run -p ekips-compiler --example gen-docs     # regenerate docs/*/stdlib.md
 ```

@@ -6,6 +6,8 @@
 use std::fmt::Write as _;
 
 use crate::span::{LineIndex, Span};
+use crate::stdlib::Expect;
+use crate::types::Ty;
 
 /// Language of the messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -58,6 +60,15 @@ pub enum Found {
     FileEnd,
 }
 
+/// Whose member a `.name` was looked up on (for "unknown member" messages).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MemberOwner {
+    /// A built-in name such as `hub` or `Port`, or a class such as `DriveBase`
+    Name(String),
+    /// A value of this type
+    Value(Ty),
+}
+
 /// The different kinds of problems.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorKind {
@@ -107,6 +118,68 @@ pub enum ErrorKind {
     MissingMain,
     /// `main` exists but is not `async`
     MainNotAsync,
+
+    // --- Semantic analysis ---
+    /// A name that is not declared anywhere
+    UnknownName {
+        /// The name
+        name: String,
+        /// A similar name that exists
+        suggestion: Option<String>,
+    },
+    /// `.name` that does not exist on the value
+    UnknownMember {
+        /// What the member was looked up on
+        owner: MemberOwner,
+        /// The member name
+        member: String,
+        /// A similar member that exists
+        suggestion: Option<String>,
+    },
+    /// The same name is declared twice in the same block (related: first declaration)
+    DuplicateDeclaration(String),
+    /// A declaration uses the name of a built-in (`const hub = …`)
+    ShadowsBuiltin(String),
+    /// A `let`/`const` is used before the line that declares it (related: declaration)
+    UsedBeforeDeclaration(String),
+    /// Assignment to a `const` (related: declaration)
+    AssignToConst(String),
+    /// Assignment to a function name
+    AssignToFunction(String),
+    /// Assignment to something built in (`hub.heading = 0deg`)
+    ReadOnly(String),
+    /// A built-in command used without `()` (`robot.stop`)
+    MustCall(String),
+    /// A built-in name used on its own (`const h = hub`)
+    NotAValue(String),
+    /// A device class called without `new` (`Motor(Port.A)`)
+    MissingNew(String),
+    /// `new` used with something that is not a device class
+    NotAClass(Option<String>),
+    /// Something that is not a function is called (`motor.angle()`)
+    NotCallable(Option<String>),
+    /// Wrong number of arguments
+    WrongArgCount {
+        /// Function name as written
+        name: String,
+        /// Smallest allowed number
+        min: usize,
+        /// Largest allowed number (`None` = unlimited)
+        max: Option<usize>,
+        /// Number given
+        found: usize,
+    },
+    /// An argument of the wrong type (`new Motor(5)`)
+    WrongArgType {
+        /// Function name as written
+        name: String,
+        /// Parameter name
+        param: &'static str,
+        /// What the parameter accepts
+        expected: Expect,
+        /// What was given
+        found: Ty,
+    },
 }
 
 /// One problem with its position.
@@ -116,10 +189,36 @@ pub struct Diagnostic {
     pub kind: ErrorKind,
     /// Where it went wrong
     pub span: Span,
+    /// A second place that belongs to the problem, e.g. the first
+    /// declaration of a name that is declared twice
+    pub related: Option<Span>,
 }
 
 fn code(s: &str) -> String {
     format!("`{s}`")
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// Describes what a parameter accepts.
+pub fn describe_expect(expect: Expect, lang: Lang) -> String {
+    match expect {
+        Expect::Any => match lang {
+            Lang::En => "a value".into(),
+            Lang::De => "ein Wert".into(),
+        },
+        Expect::Number => match lang {
+            Lang::En => "a number".into(),
+            Lang::De => "eine Zahl".into(),
+        },
+        Expect::Is(ty) => ty.describe(lang),
+    }
 }
 
 impl Expected {
@@ -170,7 +269,22 @@ impl Found {
 impl Diagnostic {
     /// Creates a diagnostic.
     pub fn new(kind: ErrorKind, span: Span) -> Self {
-        Diagnostic { kind, span }
+        Diagnostic {
+            kind,
+            span,
+            related: None,
+        }
+    }
+
+    /// Adds a related position (shown as a note).
+    pub fn with_related(mut self, span: Span) -> Self {
+        self.related = Some(span);
+        self
+    }
+
+    /// `true` for errors, `false` for warnings.
+    pub fn is_error(&self) -> bool {
+        self.severity() == Severity::Error
     }
 
     /// Whether this is an error or a warning.
@@ -276,6 +390,152 @@ impl Diagnostic {
                 "The `main` function must be `async`.",
                 "Die `main`-Funktion muss `async` sein.",
             ),
+            K::UnknownName { name, .. } => {
+                if de {
+                    format!("Den Namen `{name}` kenne ich nicht.")
+                } else {
+                    format!("I don't know the name `{name}`.")
+                }
+            }
+            K::UnknownMember { owner, member, .. } => match owner {
+                MemberOwner::Name(n) => {
+                    if de {
+                        format!("`{n}` hat kein `{member}`.")
+                    } else {
+                        format!("`{n}` has no `{member}`.")
+                    }
+                }
+                MemberOwner::Value(ty) => {
+                    let what = capitalize(&ty.describe(lang));
+                    if de {
+                        format!("{what} hat kein `.{member}`.")
+                    } else {
+                        format!("{what} has no `.{member}`.")
+                    }
+                }
+            },
+            K::DuplicateDeclaration(name) => {
+                if de {
+                    format!("`{name}` gibt es hier schon.")
+                } else {
+                    format!("`{name}` already exists here.")
+                }
+            }
+            K::ShadowsBuiltin(name) => {
+                if de {
+                    format!("`{name}` ist schon ein eingebauter Name.")
+                } else {
+                    format!("`{name}` is already a built-in name.")
+                }
+            }
+            K::UsedBeforeDeclaration(name) => {
+                if de {
+                    format!("`{name}` wird benutzt, bevor es erstellt wird.")
+                } else {
+                    format!("`{name}` is used before it is created.")
+                }
+            }
+            K::AssignToConst(name) => {
+                if de {
+                    format!("`{name}` ist eine Konstante (`const`) und kann nicht geändert werden.")
+                } else {
+                    format!("`{name}` is a constant (`const`) and can not be changed.")
+                }
+            }
+            K::AssignToFunction(name) => {
+                if de {
+                    format!("`{name}` ist eine Funktion und kann nicht geändert werden.")
+                } else {
+                    format!("`{name}` is a function and can not be changed.")
+                }
+            }
+            K::ReadOnly(name) => {
+                if de {
+                    format!("`{name}` ist eingebaut und kann nur gelesen werden.")
+                } else {
+                    format!("`{name}` is built in and can only be read.")
+                }
+            }
+            K::MustCall(name) => {
+                if de {
+                    format!("`{name}` ist ein Befehl und muss mit Klammern aufgerufen werden.")
+                } else {
+                    format!("`{name}` is a command and must be called with brackets.")
+                }
+            }
+            K::NotAValue(name) => {
+                if de {
+                    format!("`{name}` kann man nicht alleine benutzen.")
+                } else {
+                    format!("`{name}` can not be used on its own.")
+                }
+            }
+            K::MissingNew(name) => {
+                if de {
+                    format!("Ein `{name}` wird mit `new` erstellt.")
+                } else {
+                    format!("A `{name}` is created with `new`.")
+                }
+            }
+            K::NotAClass(name) => match name {
+                Some(n) => {
+                    if de {
+                        format!("`{n}` kann man nicht mit `new` erstellen.")
+                    } else {
+                        format!("`{n}` can not be created with `new`.")
+                    }
+                }
+                None => t(
+                    "This can not be created with `new`.",
+                    "Das kann man nicht mit `new` erstellen.",
+                ),
+            },
+            K::NotCallable(name) => match name {
+                Some(n) => {
+                    if de {
+                        format!("`{n}` ist kein Befehl und kann nicht aufgerufen werden.")
+                    } else {
+                        format!("`{n}` is not a command and can not be called.")
+                    }
+                }
+                None => t(
+                    "This is not a function and can not be called.",
+                    "Das ist keine Funktion und kann nicht aufgerufen werden.",
+                ),
+            },
+            K::WrongArgCount {
+                name,
+                min,
+                max,
+                found,
+            } => {
+                let wanted = match (max, de) {
+                    (Some(max), _) if max == min => format!("{min}"),
+                    (Some(max), false) => format!("{min} to {max}"),
+                    (Some(max), true) => format!("{min} bis {max}"),
+                    (None, false) => format!("at least {min}"),
+                    (None, true) => format!("mindestens {min}"),
+                };
+                if de {
+                    format!("`{name}` braucht {wanted} Argument(e), bekommt aber {found}.")
+                } else {
+                    format!("`{name}` needs {wanted} argument(s), but gets {found}.")
+                }
+            }
+            K::WrongArgType {
+                name,
+                param,
+                expected,
+                found,
+            } => {
+                let e = describe_expect(*expected, lang);
+                let f = found.describe(lang);
+                if de {
+                    format!("Bei `{name}` muss `{param}` {e} sein, ist aber {f}.")
+                } else {
+                    format!("`{name}` needs {e} for `{param}`, but gets {f}.")
+                }
+            }
         }
     }
 
@@ -361,6 +621,152 @@ impl Diagnostic {
                 "Write your program into `async function main() { … }`.",
                 "Schreibe dein Programm in `async function main() { … }`.",
             ),
+            K::UnknownName { name, suggestion } => match suggestion {
+                Some(s) => {
+                    if de {
+                        Some(format!("Meintest du `{s}`?"))
+                    } else {
+                        Some(format!("Did you mean `{s}`?"))
+                    }
+                }
+                None => {
+                    if de {
+                        Some(format!(
+                            "Erstelle `{name}` zuerst, z. B. mit `const {name} = …;`. Achte auf Groß- und Kleinschreibung."
+                        ))
+                    } else {
+                        Some(format!(
+                            "Create `{name}` first, e.g. with `const {name} = …;`. Check upper and lower case."
+                        ))
+                    }
+                }
+            },
+            K::UnknownMember { suggestion, .. } => match suggestion {
+                Some(s) => {
+                    if de {
+                        Some(format!("Meintest du `{s}`?"))
+                    } else {
+                        Some(format!("Did you mean `{s}`?"))
+                    }
+                }
+                None => {
+                    if de {
+                        Some("In der Referenz steht alles, was es gibt: docs/de/stdlib.md".into())
+                    } else {
+                        Some("The reference lists everything that exists: docs/en/stdlib.md".into())
+                    }
+                }
+            },
+            K::DuplicateDeclaration(name) => {
+                if de {
+                    Some(format!(
+                        "Gib einem der beiden einen anderen Namen. Um `{name}` zu ändern, schreibe `{name} = …;` ohne `let`."
+                    ))
+                } else {
+                    Some(format!(
+                        "Give one of them a different name. To change `{name}`, write `{name} = …;` without `let`."
+                    ))
+                }
+            }
+            K::ShadowsBuiltin(name) => {
+                if de {
+                    Some(format!(
+                        "Wähle einen anderen Namen, z. B. `my{}`.",
+                        capitalize(name)
+                    ))
+                } else {
+                    Some(format!(
+                        "Choose another name, e.g. `my{}`.",
+                        capitalize(name)
+                    ))
+                }
+            }
+            K::UsedBeforeDeclaration(_) => t(
+                "Move the line that creates it further up.",
+                "Schiebe die Zeile, die es erstellt, weiter nach oben.",
+            ),
+            K::AssignToConst(name) => {
+                if de {
+                    Some(format!(
+                        "Wenn sich `{name}` ändern soll, schreibe bei der Erstellung `let` statt `const`."
+                    ))
+                } else {
+                    Some(format!(
+                        "If `{name}` should change, write `let` instead of `const` where it is created."
+                    ))
+                }
+            }
+            K::AssignToFunction(_) => t(
+                "Create a variable for the value: `let x = …;`.",
+                "Erstelle eine Variable für den Wert: `let x = …;`.",
+            ),
+            K::ReadOnly(_) => t(
+                "Built-in values only show what the robot measures. Store a value in your own variable: `let x = …;`. Some can be set to zero with a `reset…()` command.",
+                "Eingebaute Werte zeigen nur, was der Roboter misst. Speichere einen Wert in deiner eigenen Variable: `let x = …;`. Manche kann man mit einem `reset…()`-Befehl auf null setzen.",
+            ),
+            K::MustCall(name) => {
+                if de {
+                    Some(format!("Schreibe `{name}()`."))
+                } else {
+                    Some(format!("Write `{name}()`."))
+                }
+            }
+            K::NotAValue(name) => {
+                if de {
+                    Some(format!(
+                        "Benutze ein Mitglied davon, z. B. `{name}.…`, oder erstelle ein Gerät mit `new`."
+                    ))
+                } else {
+                    Some(format!(
+                        "Use one of its members, e.g. `{name}.…`, or create a device with `new`."
+                    ))
+                }
+            }
+            K::MissingNew(name) => {
+                if de {
+                    Some(format!("Schreibe `new {name}(…)`."))
+                } else {
+                    Some(format!("Write `new {name}(…)`."))
+                }
+            }
+            K::NotAClass(_) => t(
+                "With `new` you create devices: `Motor`, `ColorSensor`, `DistanceSensor`, `ForceSensor`, `DriveBase`.",
+                "Mit `new` erstellst du Geräte: `Motor`, `ColorSensor`, `DistanceSensor`, `ForceSensor`, `DriveBase`.",
+            ),
+            K::NotCallable(_) => t(
+                "If it is a value, leave out the brackets `()`.",
+                "Wenn es ein Wert ist, lass die Klammern `()` weg.",
+            ),
+            K::WrongArgCount { max, found, .. } => {
+                if max.is_some_and(|m| *found > m) {
+                    t(
+                        "Remove the extra arguments.",
+                        "Entferne die überzähligen Argumente.",
+                    )
+                } else {
+                    t(
+                        "Add the missing arguments between the brackets, separated by `,`.",
+                        "Ergänze die fehlenden Argumente in den Klammern, getrennt durch `,`.",
+                    )
+                }
+            }
+            K::WrongArgType { expected, .. } => {
+                let example = match expected {
+                    Expect::Is(Ty::Port) => Some("Port.A"),
+                    Expect::Is(Ty::Color) => Some("Color.Red"),
+                    Expect::Is(Ty::List) => Some("[a, b]"),
+                    Expect::Is(Ty::Function) => Some("() => …"),
+                    Expect::Is(Ty::Object(crate::types::Class::Motor)) => Some("new Motor(Port.A)"),
+                    _ => None,
+                };
+                example.map(|ex| {
+                    if de {
+                        format!("Zum Beispiel: `{ex}`")
+                    } else {
+                        format!("For example: `{ex}`")
+                    }
+                })
+            }
             _ => None,
         }
     }
@@ -411,6 +817,14 @@ impl Diagnostic {
         );
         if let Some(hint) = self.hint(lang) {
             let _ = writeln!(out, "{pad} = {help}: {hint}");
+        }
+        if let Some(related) = self.related {
+            let r = index.line_col(related.start);
+            let note = match lang {
+                Lang::En => format!("note: see {path}:{}:{}", r.line, r.col),
+                Lang::De => format!("Hinweis: siehe {path}:{}:{}", r.line, r.col),
+            };
+            let _ = writeln!(out, "{pad} = {note}");
         }
         out
     }

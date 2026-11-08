@@ -1,0 +1,95 @@
+# Compiler
+
+The compiler (`crates/compiler`) turns an `.ekips` file into bytecode in
+several passes. Every pass reports *all* problems it finds, in English and
+German, with a hint on how to fix them.
+
+| Pass | Module | Finds |
+|---|---|---|
+| Lexer | `lexer.rs` | unknown characters, unknown units, unclosed texts/comments |
+| Parser | `parser.rs` | syntax errors, misspelled keywords, `await` outside `async`, missing `main` |
+| Semantic analysis | `sema.rs` | unknown names, scopes, `const`, wrong use of built-ins (this page) |
+
+API: `ekips_compiler::parse(source)` runs lexer and parser only,
+`ekips_compiler::check(source)` also runs semantic analysis. If there are
+syntax errors, `check` reports only those (see decision D3).
+
+## Semantic analysis
+
+### Scopes
+
+Scoping works like in JavaScript:
+
+- `let` and `const` are visible from their line to the end of their block
+  (`{ … }`, the body of `if`/`while`/`for`, a function).
+- A `for (let i = …)` or `for (const x of …)` variable is only visible in the loop.
+- Function parameters are visible in the function body.
+- `function` declarations are *hoisted*: they can be called above the line
+  where they are written.
+- Code inside a function runs later, so it may use variables that are
+  declared further down in an outer block. Top-level code and code in the
+  same function may not (`UsedBeforeDeclaration`).
+
+### Checks
+
+| Problem | Example | Message (English) |
+|---|---|---|
+| Unknown name | `await wiat(1s)` | I don't know the name `wiat`. *Did you mean `wait`?* |
+| Unknown member | `robot.drvie(20cm)`, `robot.fahre(20cm)` | `DriveBase` has no `drvie`. *Did you mean `drive`?* |
+| Declared twice in one block | `let x = 1; let x = 2;` | `x` already exists here. (+ note with the first line) |
+| Hides a built-in | `const hub = 1` | `hub` is already a built-in name. |
+| Used before created | `console.log(y); let y = 1;` | `y` is used before it is created. |
+| Assignment to `const` | `const S = 1; S = 2;` (also `+=`, `++`) | `S` is a constant (`const`) and can not be changed. |
+| Assignment to a function or built-in | `main = 1`, `hub.heading = 0deg` | … can not be changed / can only be read. |
+| Command without `()` | `robot.stop;` | `robot.stop` is a command and must be called with brackets. |
+| Built-in used on its own | `const h = hub` | `hub` can not be used on its own. |
+| Missing `new` | `Motor(Port.A)` | A `Motor` is created with `new`. |
+| `new` with a non-class | `new wait(1s)` | `wait` can not be created with `new`. |
+| Calling a value | `arm.angle()` | `arm.angle` is not a command and can not be called. |
+| Wrong number of arguments | `robot.drive()` | `robot.drive` needs 1 to 2 argument(s), but gets 0. |
+| Wrong argument type | `new Motor(5)` | `Motor` needs a port like `Port.A` for `port`, but gets a plain number. |
+
+"Did you mean …?" suggestions ignore upper/lower case (`spead` → `SPEED`),
+know German and other words from the standard library table
+(`warte` → `wait`, `fahre` → `drive`, `Color.Rot` → `Color.Red`) and never
+guess for single letters.
+
+### Types
+
+There are no type annotations, but the compiler infers a rough type for
+each expression: number of a kind (`Length`, `Angle`, `Time`, `Percent`,
+`Number`), yes/no, text, list, function, Promise, port, color, or a device
+(`Motor`, …). Things it can not know – parameters, list items – are
+"unknown" and never cause an error. A variable gets the type of its
+initial value; a plain `0` counts as unknown (counters often start at `0`).
+
+For a value of unknown type, `.member` is checked by name across all
+devices: `motor.rotate(…)` on a parameter `motor` is fine, `motor.rotat`
+is an error.
+
+### Results for later passes
+
+`check` returns a `sema::Analysis` with
+
+- `resolutions`: what each name refers to (declaration or built-in),
+- `bindings`: every declaration with kind, type, storage (global or local
+  of which function) and whether an inner function *captures* it,
+- `members`: how each `.member` was resolved (namespace, known device, or
+  dynamic).
+
+Code generation and the language server use these instead of resolving
+names again.
+
+## Standard library table
+
+All built-ins are described in **one data table**,
+`crates/compiler/src/stdlib.rs` (`GLOBALS`): names, parameters with
+expected kind, optional parameters, return type, the VM's native function,
+documentation in both languages and aliases. The reference
+[`stdlib.md`](stdlib.md) is generated from it:
+
+```sh
+cargo run -p ekips-compiler --example gen-docs
+```
+
+A test fails if the generated files are outdated.

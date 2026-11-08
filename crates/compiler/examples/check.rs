@@ -8,7 +8,7 @@
 
 use std::process::ExitCode;
 
-use ekips_compiler::{Lang, parse};
+use ekips_compiler::{Lang, check};
 
 fn main() -> ExitCode {
     let mut lang = Lang::En;
@@ -36,19 +36,25 @@ fn main() -> ExitCode {
                 continue;
             }
         };
-        let result = parse(&source);
+        let result = check(&source);
         if show_ast {
             println!("{:#?}", result.program);
         }
         for diag in &result.diagnostics {
             eprintln!("{}", diag.render(&source, path, lang));
         }
-        if result.has_errors() {
+        let errors = result.diagnostics.iter().filter(|d| d.is_error()).count();
+        let warnings = result.diagnostics.len() - errors;
+        if errors > 0 {
             failed = true;
-            let n = result.diagnostics.len();
             match lang {
-                Lang::En => eprintln!("{path}: {n} problem(s)"),
-                Lang::De => eprintln!("{path}: {n} Problem(e)"),
+                Lang::En => eprintln!("{path}: {errors} error(s), {warnings} warning(s)"),
+                Lang::De => eprintln!("{path}: {errors} Fehler, {warnings} Warnung(en)"),
+            }
+        } else if warnings > 0 {
+            match lang {
+                Lang::En => println!("{path}: OK with {warnings} warning(s)"),
+                Lang::De => println!("{path}: in Ordnung, mit {warnings} Warnung(en)"),
             }
         } else {
             match lang {
