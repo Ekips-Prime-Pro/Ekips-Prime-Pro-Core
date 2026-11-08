@@ -4,8 +4,9 @@
 //! firmware checks the header before running anything, so an outdated
 //! hub can tell the user to update instead of crashing on unknown code.
 //!
-//! **Status:** only the header exists so far. Instructions follow
-//! together with the VM.
+//! After the header come the **code section** (instructions of all
+//! functions, see [`Op`]) and the **data section** (function table and
+//! constants), both described in [`Program`] and in `docs/en/bytecode.md`.
 //!
 //! Header layout (all integers little-endian):
 //!
@@ -19,9 +20,15 @@
 
 #![no_std]
 
-mod native;
+extern crate alloc;
 
-pub use native::Native;
+mod native;
+mod opcode;
+mod program;
+
+pub use native::{Native, Receiver};
+pub use opcode::{Op, Operand};
+pub use program::{Capture, Constant, DecodeError, Function, Program};
 
 /// The physical kind of a number.
 ///

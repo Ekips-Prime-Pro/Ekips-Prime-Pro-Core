@@ -130,6 +130,51 @@ natives! {
     Length = 112,
 }
 
+/// The kind of value a native method is called on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Receiver {
+    /// A `Motor`
+    Motor,
+    /// A `ColorSensor`
+    ColorSensor,
+    /// A `DistanceSensor`
+    DistanceSensor,
+    /// A `ForceSensor`
+    ForceSensor,
+    /// A `DriveBase`
+    DriveBase,
+    /// A list or a text
+    ListOrText,
+}
+
+impl Native {
+    /// For methods and properties of a value: the kind of value they belong
+    /// to. `None` for constructors and global or namespace functions.
+    ///
+    /// Used by `CallMethod`, which picks the native that fits the receiver.
+    pub fn receiver(self) -> Option<Receiver> {
+        use Native as N;
+        Some(match self {
+            N::MotorRotate
+            | N::MotorRun
+            | N::MotorStop
+            | N::MotorAngle
+            | N::MotorSpeed
+            | N::MotorResetAngle => Receiver::Motor,
+            N::ColorSensorColor | N::ColorSensorSees | N::ColorSensorReflection => {
+                Receiver::ColorSensor
+            }
+            N::DistanceSensorDistance => Receiver::DistanceSensor,
+            N::ForceSensorPressed | N::ForceSensorForce => Receiver::ForceSensor,
+            N::DriveBaseDrive | N::DriveBaseTurn | N::DriveBaseRun | N::DriveBaseStop => {
+                Receiver::DriveBase
+            }
+            N::Length => Receiver::ListOrText,
+            _ => return None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

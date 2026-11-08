@@ -8,5 +8,8 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[dependencies]
+ekips-hub-api.workspace = true
+
 [lints]
 workspace = true

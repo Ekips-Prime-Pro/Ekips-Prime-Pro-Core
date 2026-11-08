@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "ekips-bytecode"
 version = "0.2.0"
+dependencies = [
+ "ekips-hub-api",
+]
 
 [[package]]
 name = "ekips-compiler"
