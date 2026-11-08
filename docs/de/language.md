@@ -103,9 +103,9 @@ await lifting;                    // sicherstellen, dass der Arm fertig ist
 ```
 
 > **`await` vergessen** ist der häufigste Fehler: Der Roboter beginnt dann
-> den nächsten Befehl, während der vorherige noch läuft. Der Compiler wird
-> bei Befehlen warnen, deren Promise weder mit `await` abgewartet noch
-> gespeichert wird. *(geplant)*
+> den nächsten Befehl, während der vorherige noch läuft. Der Compiler warnt
+> bei Befehlen, deren Promise weder mit `await` abgewartet, noch
+> gespeichert, noch an `Promise.all`/`Promise.race` weitergegeben wird.
 
 ### DriveBase
 

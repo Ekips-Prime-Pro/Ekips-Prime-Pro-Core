@@ -100,8 +100,8 @@ await lifting;                    // make sure the arm is done
 
 > **Forgetting `await`** is the most common mistake: the robot then starts
 > the next command while the previous one is still running. The compiler
-> will warn about commands whose Promise is neither awaited nor stored.
-> *(planned)*
+> warns about commands whose Promise is neither awaited, nor stored, nor
+> passed to `Promise.all`/`Promise.race`.
 
 ### DriveBase
 

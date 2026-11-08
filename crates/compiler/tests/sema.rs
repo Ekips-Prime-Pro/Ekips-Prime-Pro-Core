@@ -19,10 +19,12 @@ fn program(body: &str) -> String {
 }
 
 /// Kinds of all problems in a full program.
+/// Only errors: the warning tests are in `warnings.rs`.
 fn problems_in(source: &str) -> Vec<ErrorKind> {
     check(source)
         .diagnostics
         .into_iter()
+        .filter(|d| d.is_error())
         .map(|d| d.kind)
         .collect()
 }
@@ -482,7 +484,8 @@ fn every_semantic_message_has_text_and_hint_in_both_languages() {
          new wait();\narm.angle();\nrobot.drive();\nnew Motor(1);",
     );
     let result = check(&source);
-    assert_eq!(result.diagnostics.len(), 14, "{:?}", result.diagnostics);
+    let errors = result.diagnostics.iter().filter(|d| d.is_error()).count();
+    assert_eq!(errors, 14, "{:?}", result.diagnostics);
     for d in &result.diagnostics {
         for lang in [Lang::En, Lang::De] {
             assert!(!d.message(lang).is_empty());

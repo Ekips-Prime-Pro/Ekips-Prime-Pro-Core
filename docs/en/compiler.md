@@ -104,6 +104,36 @@ compiler derives the kind of every calculation and checks:
   `Math.ceil` keep the kind of their input; all inputs of `min`/`max` must
   have the same kind.
 
+## Warnings
+
+Warnings do not stop the program from being compiled, but it probably does
+not do what was meant.
+
+### Promise is not awaited
+
+A command that takes time (`robot.drive`, `arm.rotate`, `hub.beep`,
+`wait`, `waitUntil`, `Promise.all`/`race`, own `async` functions) returns a
+Promise. If its Promise is **neither awaited, nor stored, nor passed on**
+(for example to `Promise.all`), the compiler warns:
+
+```text
+warning: The program does not wait until `robot.drive(…)` is finished.
+  = help: Write `await` in front to wait until it is finished. To do it at the
+          same time as something else, store it (`const driving = …;`) or put
+          it into `Promise.all([…])`.
+```
+
+| Code | Warning? |
+|---|---|
+| `robot.drive(20cm);` | yes |
+| `await robot.drive(20cm);` | no |
+| `const driving = robot.drive(20cm);` | no (stored) |
+| `await Promise.all([robot.drive(20cm), wave()]);` | no (passed on) |
+| `Promise.all([…]);` | yes (the combined Promise is not awaited) |
+| `const go = () => robot.drive(5cm);` | no (returned by the arrow function) |
+
+Outside `async` functions the hint says to make the function `async`.
+
 ## Standard library table
 
 All built-ins are described in **one data table**,

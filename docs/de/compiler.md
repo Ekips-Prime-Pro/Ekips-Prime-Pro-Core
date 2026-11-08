@@ -110,6 +110,38 @@ Rechnung ab und prüft:
   `Math.ceil` behalten die Art ihrer Eingabe; alle Eingaben von
   `min`/`max` müssen die gleiche Art haben.
 
+## Warnungen
+
+Warnungen verhindern das Übersetzen nicht, aber das Programm tut
+wahrscheinlich nicht, was gemeint war.
+
+### Promise wird nicht abgewartet
+
+Ein Befehl, der Zeit braucht (`robot.drive`, `arm.rotate`, `hub.beep`,
+`wait`, `waitUntil`, `Promise.all`/`race`, eigene `async`-Funktionen), gibt
+ein Promise zurück. Wird sein Promise **weder mit `await` abgewartet, noch
+gespeichert, noch weitergegeben** (zum Beispiel an `Promise.all`), warnt der
+Compiler:
+
+```text
+Warnung: Das Programm wartet nicht, bis `robot.drive(…)` fertig ist.
+  = Hilfe: Schreibe `await` davor, um zu warten, bis es fertig ist. Soll es
+           gleichzeitig mit etwas anderem passieren, speichere es
+           (`const driving = …;`) oder schreibe es in `Promise.all([…])`.
+```
+
+| Code | Warnung? |
+|---|---|
+| `robot.drive(20cm);` | ja |
+| `await robot.drive(20cm);` | nein |
+| `const driving = robot.drive(20cm);` | nein (gespeichert) |
+| `await Promise.all([robot.drive(20cm), wave()]);` | nein (weitergegeben) |
+| `Promise.all([…]);` | ja (das kombinierte Promise wird nicht abgewartet) |
+| `const go = () => robot.drive(5cm);` | nein (die Pfeilfunktion gibt es zurück) |
+
+Außerhalb von `async`-Funktionen sagt der Hinweis, dass man die Funktion
+`async` machen soll.
+
 ## Tabelle der Standardbibliothek
 
 Alles Eingebaute ist in **einer Datentabelle** beschrieben,

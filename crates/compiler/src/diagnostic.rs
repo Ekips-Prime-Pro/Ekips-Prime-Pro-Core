@@ -229,6 +229,15 @@ pub enum ErrorKind {
         /// A similar command that takes this kind (`robot.turn`)
         alternative: Option<String>,
     },
+
+    // --- Warnings ---
+    /// A Promise that is neither awaited, stored nor passed on (`robot.drive(20cm);`)
+    UnusedPromise {
+        /// The command, e.g. `robot.drive`
+        name: Option<String>,
+        /// The statement is inside an `async` function (so `await` is possible)
+        in_async: bool,
+    },
 }
 
 /// One problem with its position.
@@ -347,7 +356,10 @@ impl Diagnostic {
 
     /// Whether this is an error or a warning.
     pub fn severity(&self) -> Severity {
-        Severity::Error
+        match self.kind {
+            ErrorKind::UnusedPromise { .. } => Severity::Warning,
+            _ => Severity::Error,
+        }
     }
 
     /// The main message.
@@ -655,6 +667,19 @@ impl Diagnostic {
                     format!("`{name}` needs {e} for `{param}`, but gets {f}.")
                 }
             }
+            K::UnusedPromise { name, .. } => match name {
+                Some(n) => {
+                    if de {
+                        format!("Das Programm wartet nicht, bis `{n}(…)` fertig ist.")
+                    } else {
+                        format!("The program does not wait until `{n}(…)` is finished.")
+                    }
+                }
+                None => t(
+                    "The program does not wait until this is finished.",
+                    "Das Programm wartet nicht, bis das hier fertig ist.",
+                ),
+            },
         }
     }
 
@@ -942,6 +967,16 @@ impl Diagnostic {
                     }
                 }
             },
+            K::UnusedPromise { in_async: true, .. } => t(
+                "Write `await` in front to wait until it is finished. To do it at the same time as something else, store it (`const driving = …;`) or put it into `Promise.all([…])`.",
+                "Schreibe `await` davor, um zu warten, bis es fertig ist. Soll es gleichzeitig mit etwas anderem passieren, speichere es (`const driving = …;`) oder schreibe es in `Promise.all([…])`.",
+            ),
+            K::UnusedPromise {
+                in_async: false, ..
+            } => t(
+                "Make the function `async` and write `await` in front, or store the Promise in a variable.",
+                "Mache die Funktion `async` und schreibe `await` davor, oder speichere das Promise in einer Variable.",
+            ),
             K::WrongArgType { expected, .. } => {
                 let example = match expected {
                     Expect::Is(Ty::Port) => Some("Port.A"),

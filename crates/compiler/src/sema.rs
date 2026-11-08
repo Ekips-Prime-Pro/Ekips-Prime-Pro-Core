@@ -127,7 +127,10 @@ pub struct Analysis {
 /// Analyzes a parsed program.
 pub fn analyze(program: &Program) -> Analysis {
     let mut a = Analyzer::default();
-    a.fns.push(FnCtx { id: FnId::Top });
+    a.fns.push(FnCtx {
+        id: FnId::Top,
+        is_async: false,
+    });
     a.scopes.push(Scope {
         names: HashMap::new(),
         fn_id: FnId::Top,
@@ -147,6 +150,7 @@ struct Scope {
 #[derive(Debug, Clone, Copy)]
 struct FnCtx {
     id: FnId,
+    is_async: bool,
 }
 
 /// Result of looking up `object.property`.
@@ -382,6 +386,7 @@ impl Analyzer {
     fn walk_function(&mut self, f: &Function) {
         self.fns.push(FnCtx {
             id: FnId::Func(f.span),
+            is_async: f.is_async,
         });
         self.push_scope();
         for p in &f.params {
@@ -493,8 +498,21 @@ impl Analyzer {
     }
 
     /// An expression used as a statement.
+    ///
+    /// Warns when its value is a Promise: the Promise is then neither
+    /// awaited, nor stored, nor passed to `Promise.all`/`Promise.race`, and
+    /// the program goes on while the command is still running. (Storing it
+    /// or passing it on are not expression statements, so they never warn.)
     fn expr_statement(&mut self, e: &Expr) {
-        self.expr(e);
+        let ty = self.expr(e);
+        if ty == Ty::Promise && !matches!(e.kind, ExprKind::Assign { .. }) {
+            let name = match &e.kind {
+                ExprKind::Call { callee, .. } => path_text(callee),
+                _ => None,
+            };
+            let in_async = self.current_fn().is_async;
+            self.error(ErrorKind::UnusedPromise { name, in_async }, e.span);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -563,9 +581,14 @@ impl Analyzer {
                 Ty::Promise => Ty::Any,
                 t => t,
             },
-            ExprKind::Arrow { params, body, .. } => {
+            ExprKind::Arrow {
+                params,
+                body,
+                is_async,
+            } => {
                 self.fns.push(FnCtx {
                     id: FnId::Func(e.span),
+                    is_async: *is_async,
                 });
                 self.push_scope();
                 for p in params {
