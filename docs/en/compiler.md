@@ -9,6 +9,7 @@ German, with a hint on how to fix them.
 | Lexer | `lexer.rs` | unknown characters, unknown units, unclosed texts/comments |
 | Parser | `parser.rs` | syntax errors, misspelled keywords, `await` outside `async`, missing `main` |
 | Semantic analysis | `sema.rs` | unknown names, scopes, `const`, wrong use of built-ins, units (this page) |
+| Code generation | `codegen.rs` | size limits of the bytecode format |
 
 API: `ekips_compiler::parse(source)` runs lexer and parser only,
 `ekips_compiler::check(source)` also runs semantic analysis. If there are
@@ -133,6 +134,34 @@ warning: The program does not wait until `robot.drive(…)` is finished.
 | `const go = () => robot.drive(5cm);` | no (returned by the arrow function) |
 
 Outside `async` functions the hint says to make the function `async`.
+
+## Code generation
+
+`ekips_compiler::compile(source)` runs all passes and, if there are no
+errors (warnings are fine), returns the encoded bytecode
+(`CompileResult::bytecode`). `codegen.rs` uses the analysis results
+instead of resolving names again:
+
+- Directly declared top-level names become **globals**, everything else
+  **local slots**. Variables captured by inner functions get a **cell**
+  (`NewCell`); the cell is created when its block is entered, so each loop
+  round has its own variable.
+- Function declarations are created at the start of their block (hoisting).
+- Built-ins become `CallNative` with the id from the standard library
+  table; members of values of unknown type become `CallMethod` with a
+  method set.
+- Units are converted to base units (`20cm` → `200` mm).
+- Function 0 runs the top-level code and then `await main()`.
+- Size limits of the format (255 variables per function, 64 KiB code per
+  function, 65535 constants) are reported as errors with a hint.
+
+Show the bytecode of a program:
+
+```sh
+cargo run -p ekips-compiler --example check -- --asm examples/square.ekips
+```
+
+Format and instruction set: [bytecode.md](bytecode.md).
 
 ## Standard library table
 

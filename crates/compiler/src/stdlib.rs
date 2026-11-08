@@ -1330,6 +1330,47 @@ mod tests {
     }
 
     #[test]
+    fn native_receivers_match_the_table() {
+        use ekips_bytecode::Receiver;
+        let receiver = |class: Class| match class {
+            Class::Motor => Receiver::Motor,
+            Class::ColorSensor => Receiver::ColorSensor,
+            Class::DistanceSensor => Receiver::DistanceSensor,
+            Class::ForceSensor => Receiver::ForceSensor,
+            Class::DriveBase => Receiver::DriveBase,
+        };
+        let native_of = |m: &Member| match m.kind {
+            MemberKind::Method(sig) => Some(sig.native),
+            MemberKind::Property { native, .. } => Some(native),
+            MemberKind::Constant(_) => None,
+        };
+        for g in GLOBALS {
+            match g.kind {
+                GlobalKind::Class {
+                    class,
+                    ctor,
+                    members,
+                } => {
+                    assert_eq!(ctor.native.receiver(), None);
+                    for m in members {
+                        let n = native_of(m).expect("instance members have natives");
+                        assert_eq!(n.receiver(), Some(receiver(class)), "{n:?}");
+                    }
+                }
+                GlobalKind::Namespace { members } => {
+                    for n in members.iter().filter_map(native_of) {
+                        assert_eq!(n.receiver(), None, "{n:?}");
+                    }
+                }
+                GlobalKind::Function(sig) => assert_eq!(sig.native.receiver(), None),
+            }
+        }
+        for m in LIST_MEMBERS {
+            assert_eq!(native_of(m).unwrap().receiver(), Some(Receiver::ListOrText));
+        }
+    }
+
+    #[test]
     fn optional_parameters_come_last() {
         let sigs = GLOBALS
             .iter()

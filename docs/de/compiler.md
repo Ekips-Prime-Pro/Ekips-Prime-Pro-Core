@@ -9,6 +9,7 @@ auf Englisch und Deutsch, mit einem Hinweis, wie man sie behebt.
 | Lexer | `lexer.rs` | unbekannte Zeichen, unbekannte Einheiten, nicht geschlossene Texte/Kommentare |
 | Parser | `parser.rs` | Syntaxfehler, falsch geschriebene Schlüsselwörter, `await` außerhalb von `async`, fehlendes `main` |
 | Semantische Analyse | `sema.rs` | unbekannte Namen, Gültigkeitsbereiche, `const`, falsche Benutzung eingebauter Dinge, Einheiten (diese Seite) |
+| Codeerzeugung | `codegen.rs` | Größengrenzen des Bytecode-Formats |
 
 API: `ekips_compiler::parse(source)` führt nur Lexer und Parser aus,
 `ekips_compiler::check(source)` zusätzlich die semantische Analyse. Gibt es
@@ -141,6 +142,35 @@ Warnung: Das Programm wartet nicht, bis `robot.drive(…)` fertig ist.
 
 Außerhalb von `async`-Funktionen sagt der Hinweis, dass man die Funktion
 `async` machen soll.
+
+## Codeerzeugung
+
+`ekips_compiler::compile(source)` führt alle Durchläufe aus und liefert,
+wenn es keine Fehler gibt (Warnungen sind in Ordnung), den kodierten
+Bytecode (`CompileResult::bytecode`). `codegen.rs` benutzt die Ergebnisse
+der Analyse, statt Namen noch einmal aufzulösen:
+
+- Namen, die direkt auf oberster Ebene deklariert werden, werden
+  **Globale**, alles andere **lokale Slots**. Variablen, die innere
+  Funktionen einfangen, bekommen eine **Zelle** (`NewCell`); die Zelle wird
+  beim Betreten ihres Blocks erzeugt, so hat jede Schleifenrunde ihre eigene
+  Variable.
+- Funktionsdeklarationen werden am Anfang ihres Blocks erzeugt (Hoisting).
+- Eingebautes wird zu `CallNative` mit der ID aus der
+  Standardbibliothek-Tabelle; Mitglieder von Werten unbekannten Typs werden
+  zu `CallMethod` mit einer Methodenmenge.
+- Einheiten werden in Grundeinheiten umgerechnet (`20cm` → `200` mm).
+- Funktion 0 führt den Code auf oberster Ebene aus und danach `await main()`.
+- Größengrenzen des Formats (255 Variablen pro Funktion, 64 KiB Code pro
+  Funktion, 65535 Konstanten) werden als Fehler mit Hinweis gemeldet.
+
+Den Bytecode eines Programms anzeigen:
+
+```sh
+cargo run -p ekips-compiler --example check -- --asm examples/square.ekips
+```
+
+Format und Befehlssatz: [bytecode.md](bytecode.md).
 
 ## Tabelle der Standardbibliothek
 

@@ -6,7 +6,8 @@
 //! `docs/en/language.md` (English) or `docs/de/language.md` (German) for the
 //! full reference.
 //!
-//! Pipeline: [`lexer`] → [`parser`] → [`sema`] (names, scopes, types).
+//! Pipeline: [`lexer`] → [`parser`] → [`sema`] (names, scopes, types,
+//! units) → [`codegen`] (bytecode for `ekips-vm`). [`compile`] runs all of it.
 //! The standard library is described in one data table, [`stdlib`].
 //!
 //! ```
@@ -20,6 +21,7 @@
 //! ```
 
 pub mod ast;
+pub mod codegen;
 pub mod diagnostic;
 pub mod keywords;
 pub mod lexer;
@@ -99,5 +101,45 @@ pub fn check(source: &str) -> CheckResult {
         program: parsed.program,
         analysis,
         diagnostics,
+    }
+}
+
+/// Result of [`compile`].
+#[derive(Debug, Clone)]
+pub struct CompileResult {
+    /// The encoded program, if there were no errors
+    pub bytecode: Option<Vec<u8>>,
+    /// All problems (errors and warnings), in source order
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// Compiles a source file to bytecode.
+///
+/// ```
+/// let result = ekips_compiler::compile("async function main() { await wait(1s); }");
+/// let bytes = result.bytecode.expect("no errors");
+/// assert_eq!(&bytes[0..4], b"EKPP");
+/// ```
+pub fn compile(source: &str) -> CompileResult {
+    let checked = check(source);
+    let mut diagnostics = checked.diagnostics;
+    if diagnostics.iter().any(Diagnostic::is_error) {
+        return CompileResult {
+            bytecode: None,
+            diagnostics,
+        };
+    }
+    match codegen::generate(&checked.program, &checked.analysis, source) {
+        Ok(program) => CompileResult {
+            bytecode: Some(program.encode()),
+            diagnostics,
+        },
+        Err(d) => {
+            diagnostics.push(d);
+            CompileResult {
+                bytecode: None,
+                diagnostics,
+            }
+        }
     }
 }

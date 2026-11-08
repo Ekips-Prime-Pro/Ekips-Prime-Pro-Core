@@ -60,6 +60,21 @@ pub enum Found {
     FileEnd,
 }
 
+/// A size limit of the bytecode format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    /// More than 255 variables in one function
+    Variables,
+    /// More than 64 KiB of code in one function
+    Code,
+    /// More than 65535 constants, functions or globals
+    Program,
+    /// More than 255 arguments in one call
+    Arguments,
+    /// More than 65535 items in one list
+    ListItems,
+}
+
 /// Whose member a `.name` was looked up on (for "unknown member" messages).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MemberOwner {
@@ -229,6 +244,10 @@ pub enum ErrorKind {
         /// A similar command that takes this kind (`robot.turn`)
         alternative: Option<String>,
     },
+
+    // --- Code generation ---
+    /// A size limit of the bytecode format was exceeded
+    TooBig(Limit),
 
     // --- Warnings ---
     /// A Promise that is neither awaited, stored nor passed on (`robot.drive(20cm);`)
@@ -667,6 +686,26 @@ impl Diagnostic {
                     format!("`{name}` needs {e} for `{param}`, but gets {f}.")
                 }
             }
+            K::TooBig(limit) => match (limit, de) {
+                (Limit::Variables, false) => {
+                    "This function has too many variables (more than 255).".into()
+                }
+                (Limit::Variables, true) => {
+                    "Diese Funktion hat zu viele Variablen (mehr als 255).".into()
+                }
+                (Limit::Code, false) => "This function is too long.".into(),
+                (Limit::Code, true) => "Diese Funktion ist zu lang.".into(),
+                (Limit::Program, false) => "The program is too big.".into(),
+                (Limit::Program, true) => "Das Programm ist zu groß.".into(),
+                (Limit::Arguments, false) => {
+                    "This call has too many arguments (more than 255).".into()
+                }
+                (Limit::Arguments, true) => {
+                    "Dieser Aufruf hat zu viele Argumente (mehr als 255).".into()
+                }
+                (Limit::ListItems, false) => "This list has too many items.".into(),
+                (Limit::ListItems, true) => "Diese Liste hat zu viele Elemente.".into(),
+            },
             K::UnusedPromise { name, .. } => match name {
                 Some(n) => {
                     if de {
@@ -967,6 +1006,10 @@ impl Diagnostic {
                     }
                 }
             },
+            K::TooBig(_) => t(
+                "Split it into several smaller functions.",
+                "Teile es in mehrere kleinere Funktionen auf.",
+            ),
             K::UnusedPromise { in_async: true, .. } => t(
                 "Write `await` in front to wait until it is finished. To do it at the same time as something else, store it (`const driving = …;`) or put it into `Promise.all([…])`.",
                 "Schreibe `await` davor, um zu warten, bis es fertig ist. Soll es gleichzeitig mit etwas anderem passieren, speichere es (`const driving = …;`) oder schreibe es in `Promise.all([…])`.",
