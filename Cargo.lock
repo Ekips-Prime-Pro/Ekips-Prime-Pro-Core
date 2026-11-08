@@ -4,14 +4,14 @@ version = 4
 
 [[package]]
 name = "ekips-bytecode"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ekips-hub-api",
 ]
 
 [[package]]
 name = "ekips-compiler"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ekips-bytecode",
  "ekips-hub-api",
@@ -19,11 +19,11 @@ dependencies = [
 
 [[package]]
 name = "ekips-hub-api"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "ekips-vm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ekips-bytecode",
  "ekips-compiler",

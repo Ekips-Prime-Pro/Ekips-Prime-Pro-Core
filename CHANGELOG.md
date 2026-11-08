@@ -5,6 +5,33 @@ Git tag (`vX.Y.Z`). The format follows [Keep a Changelog](https://keepachangelog
 versions follow [Semantic Versioning](https://semver.org/) (before 1.0, a
 minor version may break the API).
 
+## [0.3.0] – 2026-11-08
+
+### Added
+
+- Bytecode instruction set (`ekips_bytecode::Op`) and program format
+  (`Program` with function table, constant pool and code; `encode`,
+  `decode`, `disassemble`). Format version stays `1` (first version with
+  instructions). Design doc `docs/{en,de}/bytecode.md`.
+- `Native::receiver()` and `Receiver` for calls on values of unknown type.
+- Code generation (`ekips_compiler::codegen`) and
+  `ekips_compiler::compile(source)` → `CompileResult { bytecode, diagnostics }`.
+- New crate **`ekips-vm`** (`no_std` + `alloc`): interpreter with a
+  cooperative scheduler for `async`/`await` (one task per async call, one
+  time slice per task and tick), Promises for movements, waits,
+  `waitUntil`, `Promise.all`/`race`; all hardware access through
+  `ekips_hub_api::Hardware`; runtime errors with line and bilingual messages.
+- `ekips_vm::MockHub`: simulated hub with clock, movement times, scripted
+  sensors and a text log of all hardware calls.
+- Example `cargo run -p ekips-vm --example run -- FILE.ekips` (prints the
+  hardware calls), `--asm` option of the `check` example.
+- Docs `docs/{en,de}/vm.md`, decisions D7–D10.
+
+### Changed
+
+- `ekips-bytecode` now uses `alloc` and depends on `ekips-hub-api`.
+- CI builds `ekips-vm` for `thumbv7em-none-eabihf`.
+
 ## [0.2.0] – 2026-11-08
 
 ### Added
