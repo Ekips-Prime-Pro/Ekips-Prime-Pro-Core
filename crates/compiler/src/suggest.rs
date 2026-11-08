@@ -33,17 +33,39 @@ fn edit_distance(a: &str, b: &str) -> usize {
 ///
 /// Known German or other-language words (e.g. `fahre`, `sleep`) are
 /// translated first, as long as the translation is a candidate.
-pub fn suggest(word: &str, candidates: &[&'static str]) -> Option<&'static str> {
-    if let Some(&(_, english)) = TRANSLATIONS.iter().find(|(w, _)| *w == word) {
-        if candidates.contains(&english) {
-            return Some(english);
-        }
+pub fn suggest<'a>(word: &str, candidates: &[&'a str]) -> Option<&'a str> {
+    suggest_with(word, candidates, &[])
+}
+
+/// Like [`suggest`], with extra `(word, candidate)` translations, e.g. the
+/// German aliases of standard library members (`fahre` → `drive`).
+pub fn suggest_with<'a>(
+    word: &str,
+    candidates: &[&'a str],
+    extra: &[(&str, &str)],
+) -> Option<&'a str> {
+    let translated = TRANSLATIONS
+        .iter()
+        .chain(extra.iter())
+        .filter(|(w, _)| *w == word)
+        .find_map(|(_, english)| candidates.iter().find(|c| **c == *english));
+    if let Some(c) = translated {
+        return Some(*c);
     }
-    let max = if word.chars().count() <= 4 { 1 } else { 2 };
+    // Upper and lower case do not count as a difference (`spead` → `SPEED`).
+    let lower = word.to_lowercase();
+    let len = lower.chars().count();
+    let max = match len {
+        // A single letter is "close" to every other letter; no guessing.
+        0 | 1 => 0,
+        2..=4 => 1,
+        _ => 2,
+    };
     candidates
         .iter()
-        .map(|&c| (edit_distance(word, c), c))
-        .filter(|&(dist, _)| dist > 0 && dist <= max)
+        .filter(|c| **c != word)
+        .map(|&c| (edit_distance(&lower, &c.to_lowercase()), c))
+        .filter(|&(dist, _)| dist <= max)
         .min_by_key(|&(dist, _)| dist)
         .map(|(_, c)| c)
 }
@@ -69,6 +91,9 @@ mod tests {
         assert_eq!(suggest("funktion", kws), Some("function"));
         assert_eq!(suggest("wenn", kws), Some("if"));
         assert_eq!(suggest("banana", kws), None);
+        assert_eq!(suggest("spead", &["SPEED", "robot"]), Some("SPEED"));
+        assert_eq!(suggest("Const", kws), Some("const"));
+        assert_eq!(suggest("G", &["A", "B"]), None);
         // Translation target not among candidates: fall back to spelling.
         assert_eq!(suggest("wahr", &["if"]), None);
     }

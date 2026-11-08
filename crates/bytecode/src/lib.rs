@@ -4,8 +4,9 @@
 //! firmware checks the header before running anything, so an outdated
 //! hub can tell the user to update instead of crashing on unknown code.
 //!
-//! **Status:** only the header exists so far. Instructions follow
-//! together with the VM.
+//! After the header come the **code section** (instructions of all
+//! functions, see [`Op`]) and the **data section** (function table and
+//! constants), both described in [`Program`] and in `docs/en/bytecode.md`.
 //!
 //! Header layout (all integers little-endian):
 //!
@@ -18,6 +19,60 @@
 //! | 12     | 4    | constants length |
 
 #![no_std]
+
+extern crate alloc;
+
+mod native;
+mod opcode;
+mod program;
+
+pub use native::{Native, Receiver};
+pub use opcode::{Op, Operand};
+pub use program::{Capture, Constant, DecodeError, Function, Program};
+
+/// The physical kind of a number.
+///
+/// Units are checked by the compiler and normalised to one base unit per
+/// kind, so the VM only needs to know the kind (for printing and for the
+/// result kind of arithmetic):
+///
+/// | Kind | Base unit | Written as |
+/// |---|---|---|
+/// | [`Dim::Number`] | – | `3`, `2.5` |
+/// | [`Dim::Length`] | millimetre | `mm`, `cm` |
+/// | [`Dim::Angle`] | degree | `deg`, `°`, `rot` |
+/// | [`Dim::Time`] | millisecond | `ms`, `s` |
+/// | [`Dim::Percent`] | percent | `%` |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Dim {
+    /// A plain number without unit
+    Number = 0,
+    /// A length (base unit: mm)
+    Length = 1,
+    /// An angle (base unit: degree)
+    Angle = 2,
+    /// A duration (base unit: ms)
+    Time = 3,
+    /// A percentage, e.g. a speed
+    Percent = 4,
+}
+
+impl Dim {
+    /// All kinds, in the order of their encoding.
+    pub const ALL: [Dim; 5] = [
+        Dim::Number,
+        Dim::Length,
+        Dim::Angle,
+        Dim::Time,
+        Dim::Percent,
+    ];
+
+    /// Decodes a kind from its byte.
+    pub fn from_u8(b: u8) -> Option<Dim> {
+        Dim::ALL.get(usize::from(b)).copied()
+    }
+}
 
 /// Magic bytes at the start of every program.
 pub const MAGIC: [u8; 4] = *b"EKPP";
@@ -107,6 +162,14 @@ impl Header {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dim_round_trip() {
+        for dim in Dim::ALL {
+            assert_eq!(Dim::from_u8(dim as u8), Some(dim));
+        }
+        assert_eq!(Dim::from_u8(5), None);
+    }
 
     #[test]
     fn header_round_trip() {

@@ -151,6 +151,28 @@ impl Unit {
         })
     }
 
+    /// The physical kind of the unit.
+    pub fn dim(self) -> ekips_bytecode::Dim {
+        use ekips_bytecode::Dim;
+        match self {
+            Unit::Mm | Unit::Cm => Dim::Length,
+            Unit::Deg | Unit::Rot => Dim::Angle,
+            Unit::S | Unit::Ms => Dim::Time,
+            Unit::Percent => Dim::Percent,
+        }
+    }
+
+    /// Converts a value in this unit to the base unit of its kind
+    /// (mm, degree, ms, percent).
+    pub fn to_base(self, value: f64) -> f64 {
+        match self {
+            Unit::Mm | Unit::Deg | Unit::Ms | Unit::Percent => value,
+            Unit::Cm => value * 10.0,
+            Unit::Rot => value * 360.0,
+            Unit::S => value * 1000.0,
+        }
+    }
+
     /// Canonical suffix.
     pub fn suffix(self) -> &'static str {
         match self {

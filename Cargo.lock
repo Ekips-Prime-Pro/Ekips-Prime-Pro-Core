@@ -4,15 +4,35 @@ version = 4
 
 [[package]]
 name = "ekips-bytecode"
-version = "0.1.0"
-
-[[package]]
-name = "ekips-compiler"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "ekips-hub-api",
 ]
 
 [[package]]
+name = "ekips-compiler"
+version = "0.3.0"
+dependencies = [
+ "ekips-bytecode",
+ "ekips-hub-api",
+]
+
+[[package]]
 name = "ekips-hub-api"
-version = "0.1.0"
+version = "0.3.0"
+
+[[package]]
+name = "ekips-vm"
+version = "0.3.0"
+dependencies = [
+ "ekips-bytecode",
+ "ekips-compiler",
+ "ekips-hub-api",
+ "libm",
+]
+
+[[package]]
+name = "libm"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"

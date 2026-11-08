@@ -45,9 +45,9 @@ Fehler: Das Wort `cosnt` verstehe ich hier nicht.
 | Crate | `no_std` | Status | Purpose |
 |---|:---:|---|---|
 | [`ekips-hub-api`](crates/hub-api) | ✅ | draft | `Hardware` trait shared by simulator and firmware; ports, colors |
-| [`ekips-bytecode`](crates/bytecode) | ✅ | header only | Program container format with version check |
-| [`ekips-compiler`](crates/compiler) | – | lexer + parser | Source → syntax tree → (later) bytecode |
-| `ekips-vm` | ✅ | planned | Bytecode interpreter with cooperative tasks |
+| [`ekips-bytecode`](crates/bytecode) | ✅ | done | Program format, instruction set, native function ids |
+| [`ekips-compiler`](crates/compiler) | – | done | Source → syntax tree → analysis (names, units) → bytecode |
+| [`ekips-vm`](crates/vm) | ✅ | done | Bytecode interpreter with cooperative tasks, mock hub |
 | `ekips-protocol` | ✅ | planned | Messages between computer and hub over USB |
 
 ## Try it
@@ -56,9 +56,10 @@ Fehler: Das Wort `cosnt` verstehe ich hier nicht.
 cargo test --workspace
 cargo run -p ekips-compiler --example check -- examples/*.ekips
 cargo run -p ekips-compiler --example check -- --de --ast examples/square.ekips
+cargo run -p ekips-vm --example run -- examples/square.ekips
 ```
 
-The language reference is in [`docs/language.md`](docs/language.md).
+The documentation is in [`docs/`](docs/README.md) (English and German): language reference in [English](docs/en/language.md) and [German](docs/de/language.md).
 
 ## Credits
 

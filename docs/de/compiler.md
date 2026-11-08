@@ -1,0 +1,187 @@
+# Compiler
+
+Der Compiler (`crates/compiler`) übersetzt eine `.ekips`-Datei in mehreren
+Durchläufen in Bytecode. Jeder Durchlauf meldet *alle* gefundenen Probleme,
+auf Englisch und Deutsch, mit einem Hinweis, wie man sie behebt.
+
+| Durchlauf | Modul | Findet |
+|---|---|---|
+| Lexer | `lexer.rs` | unbekannte Zeichen, unbekannte Einheiten, nicht geschlossene Texte/Kommentare |
+| Parser | `parser.rs` | Syntaxfehler, falsch geschriebene Schlüsselwörter, `await` außerhalb von `async`, fehlendes `main` |
+| Semantische Analyse | `sema.rs` | unbekannte Namen, Gültigkeitsbereiche, `const`, falsche Benutzung eingebauter Dinge, Einheiten (diese Seite) |
+| Codeerzeugung | `codegen.rs` | Größengrenzen des Bytecode-Formats |
+
+API: `ekips_compiler::parse(source)` führt nur Lexer und Parser aus,
+`ekips_compiler::check(source)` zusätzlich die semantische Analyse. Gibt es
+Syntaxfehler, meldet `check` nur diese (siehe Entscheidung D3).
+
+## Semantische Analyse
+
+### Gültigkeitsbereiche
+
+Gültigkeitsbereiche funktionieren wie in JavaScript:
+
+- `let` und `const` sind ab ihrer Zeile bis zum Ende ihres Blocks sichtbar
+  (`{ … }`, der Rumpf von `if`/`while`/`for`, eine Funktion).
+- Eine Variable aus `for (let i = …)` oder `for (const x of …)` ist nur in der
+  Schleife sichtbar.
+- Funktionsparameter sind im Funktionsrumpf sichtbar.
+- `function`-Deklarationen werden *hochgezogen* (hoisting): Man kann sie
+  oberhalb der Zeile aufrufen, in der sie stehen.
+- Code in einer Funktion läuft erst später, deshalb darf er Variablen
+  benutzen, die weiter unten in einem äußeren Block erstellt werden. Code auf
+  oberster Ebene und Code in derselben Funktion darf das nicht
+  (`UsedBeforeDeclaration`).
+
+### Prüfungen
+
+| Problem | Beispiel | Meldung (Deutsch) |
+|---|---|---|
+| Unbekannter Name | `await wiat(1s)` | Den Namen `wiat` kenne ich nicht. *Meintest du `wait`?* |
+| Unbekanntes Mitglied | `robot.drvie(20cm)`, `robot.fahre(20cm)` | `DriveBase` hat kein `drvie`. *Meintest du `drive`?* |
+| Zweimal im selben Block erstellt | `let x = 1; let x = 2;` | `x` gibt es hier schon. (+ Hinweis auf die erste Zeile) |
+| Verdeckt etwas Eingebautes | `const hub = 1` | `hub` ist schon ein eingebauter Name. |
+| Benutzt, bevor erstellt | `console.log(y); let y = 1;` | `y` wird benutzt, bevor es erstellt wird. |
+| Zuweisung an `const` | `const S = 1; S = 2;` (auch `+=`, `++`) | `S` ist eine Konstante (`const`) und kann nicht geändert werden. |
+| Zuweisung an Funktion oder Eingebautes | `main = 1`, `hub.heading = 0deg` | … kann nicht geändert werden / kann nur gelesen werden. |
+| Befehl ohne `()` | `robot.stop;` | `robot.stop` ist ein Befehl und muss mit Klammern aufgerufen werden. |
+| Eingebautes alleine benutzt | `const h = hub` | `hub` kann man nicht alleine benutzen. |
+| Fehlendes `new` | `Motor(Port.A)` | Ein `Motor` wird mit `new` erstellt. |
+| `new` mit etwas anderem als einem Gerät | `new wait(1s)` | `wait` kann man nicht mit `new` erstellen. |
+| Einen Wert aufrufen | `arm.angle()` | `arm.angle` ist kein Befehl und kann nicht aufgerufen werden. |
+| Falsche Anzahl Argumente | `robot.drive()` | `robot.drive` braucht 1 bis 2 Argument(e), bekommt aber 0. |
+| Falscher Argumenttyp | `new Motor(5)` | Bei `Motor` muss `port` ein Anschluss wie `Port.A` sein, ist aber eine Zahl ohne Einheit. |
+
+Vorschläge („Meintest du …?“) ignorieren Groß- und Kleinschreibung
+(`spead` → `SPEED`), kennen deutsche und andere Wörter aus der
+Standardbibliothek-Tabelle (`warte` → `wait`, `fahre` → `drive`,
+`Color.Rot` → `Color.Red`) und raten bei einzelnen Buchstaben nie.
+
+### Typen
+
+Es gibt keine Typangaben, aber der Compiler leitet für jeden Ausdruck einen
+groben Typ ab: Zahl einer Art (`Length`, `Angle`, `Time`, `Percent`,
+`Number`), Ja/Nein, Text, Liste, Funktion, Promise, Anschluss, Farbe oder
+ein Gerät (`Motor`, …). Was er nicht wissen kann – Parameter,
+Listenelemente – ist „unbekannt“ und führt nie zu einem Fehler. Eine
+Variable bekommt den Typ ihres Anfangswerts; eine einfache `0` zählt als
+unbekannt (Zähler beginnen oft bei `0`).
+
+Bei einem Wert mit unbekanntem Typ wird `.mitglied` über alle Geräte hinweg
+nach dem Namen geprüft: `motor.rotate(…)` auf einem Parameter `motor` ist in
+Ordnung, `motor.rotat` ist ein Fehler.
+
+### Ergebnisse für spätere Durchläufe
+
+`check` liefert eine `sema::Analysis` mit
+
+- `resolutions`: worauf sich jeder Name bezieht (Deklaration oder Eingebautes),
+- `bindings`: jede Deklaration mit Art, Typ, Speicherort (global oder lokal
+  in welcher Funktion) und ob eine innere Funktion sie *einfängt* (capture),
+- `members`: wie jedes `.mitglied` aufgelöst wurde (Namensraum, bekanntes
+  Gerät oder dynamisch).
+
+Codeerzeugung und Language Server benutzen diese Ergebnisse, statt Namen
+noch einmal aufzulösen.
+
+## Einheitenprüfung
+
+Jede Zahl hat eine *Art*: `Length` (Länge: `mm`, `cm`), `Angle` (Winkel:
+`deg`, `°`, `rot`), `Time` (Zeit: `s`, `ms`), `Percent` (Prozent: `%`) oder
+eine einfache `Number` (Zahl ohne Einheit). Der Compiler leitet die Art jeder
+Rechnung ab und prüft:
+
+| Operation | Regel | Beispiel OK | Fehler |
+|---|---|---|---|
+| `+` `-` `%` | gleiche Art; das Ergebnis hat diese Art | `20cm + 5mm` | `20cm + 3s`, `20cm + 5` |
+| `<` `<=` `>` `>=` `==` `!=` | gleiche Art | `sonar.distance < 10cm` | `sonar.distance < 10` |
+| `*` | höchstens eine Seite hat eine Einheit | `2 * 90deg` | `20cm * 3cm` |
+| `/` | durch eine Zahl ohne Einheit (Art bleibt) oder durch die gleiche Art (Zahl ohne Einheit) | `20cm / 2`, `20cm / 5cm` | `3 / 2s`, `20cm / 2s` |
+| `=`, `+=`, … | eine Variable behält ihre Art | `d = 7mm` | `let d = 5cm; d = 2s;` |
+| `++` `--` | nur Zahlen ohne Einheit | `i++` | `d++` mit `d = 5cm` |
+| Argumente | die Art aus der Standardbibliothek-Tabelle | `robot.drive(20cm)` | `robot.drive(90deg)` |
+
+- Eine einfache `0` passt zu jeder Art: `hub.heading > 0`,
+  `let total = 0; total += 5cm;`.
+- Unbekannte Werte (Parameter, Listenelemente) sind nie Einheitenfehler.
+- Bei einem falschen ersten Argument schlägt der Compiler einen
+  Geschwister-Befehl vor, der diese Art nimmt: `robot.drive(90deg)` →
+  *Meintest du `robot.turn(…)`?*
+- `Math.abs`, `Math.min`, `Math.max`, `Math.round`, `Math.floor`,
+  `Math.ceil` behalten die Art ihrer Eingabe; alle Eingaben von
+  `min`/`max` müssen die gleiche Art haben.
+
+## Warnungen
+
+Warnungen verhindern das Übersetzen nicht, aber das Programm tut
+wahrscheinlich nicht, was gemeint war.
+
+### Promise wird nicht abgewartet
+
+Ein Befehl, der Zeit braucht (`robot.drive`, `arm.rotate`, `hub.beep`,
+`wait`, `waitUntil`, `Promise.all`/`race`, eigene `async`-Funktionen), gibt
+ein Promise zurück. Wird sein Promise **weder mit `await` abgewartet, noch
+gespeichert, noch weitergegeben** (zum Beispiel an `Promise.all`), warnt der
+Compiler:
+
+```text
+Warnung: Das Programm wartet nicht, bis `robot.drive(…)` fertig ist.
+  = Hilfe: Schreibe `await` davor, um zu warten, bis es fertig ist. Soll es
+           gleichzeitig mit etwas anderem passieren, speichere es
+           (`const driving = …;`) oder schreibe es in `Promise.all([…])`.
+```
+
+| Code | Warnung? |
+|---|---|
+| `robot.drive(20cm);` | ja |
+| `await robot.drive(20cm);` | nein |
+| `const driving = robot.drive(20cm);` | nein (gespeichert) |
+| `await Promise.all([robot.drive(20cm), wave()]);` | nein (weitergegeben) |
+| `Promise.all([…]);` | ja (das kombinierte Promise wird nicht abgewartet) |
+| `const go = () => robot.drive(5cm);` | nein (die Pfeilfunktion gibt es zurück) |
+
+Außerhalb von `async`-Funktionen sagt der Hinweis, dass man die Funktion
+`async` machen soll.
+
+## Codeerzeugung
+
+`ekips_compiler::compile(source)` führt alle Durchläufe aus und liefert,
+wenn es keine Fehler gibt (Warnungen sind in Ordnung), den kodierten
+Bytecode (`CompileResult::bytecode`). `codegen.rs` benutzt die Ergebnisse
+der Analyse, statt Namen noch einmal aufzulösen:
+
+- Namen, die direkt auf oberster Ebene deklariert werden, werden
+  **Globale**, alles andere **lokale Slots**. Variablen, die innere
+  Funktionen einfangen, bekommen eine **Zelle** (`NewCell`); die Zelle wird
+  beim Betreten ihres Blocks erzeugt, so hat jede Schleifenrunde ihre eigene
+  Variable.
+- Funktionsdeklarationen werden am Anfang ihres Blocks erzeugt (Hoisting).
+- Eingebautes wird zu `CallNative` mit der ID aus der
+  Standardbibliothek-Tabelle; Mitglieder von Werten unbekannten Typs werden
+  zu `CallMethod` mit einer Methodenmenge.
+- Einheiten werden in Grundeinheiten umgerechnet (`20cm` → `200` mm).
+- Funktion 0 führt den Code auf oberster Ebene aus und danach `await main()`.
+- Größengrenzen des Formats (255 Variablen pro Funktion, 64 KiB Code pro
+  Funktion, 65535 Konstanten) werden als Fehler mit Hinweis gemeldet.
+
+Den Bytecode eines Programms anzeigen:
+
+```sh
+cargo run -p ekips-compiler --example check -- --asm examples/square.ekips
+```
+
+Format und Befehlssatz: [bytecode.md](bytecode.md).
+
+## Tabelle der Standardbibliothek
+
+Alles Eingebaute ist in **einer Datentabelle** beschrieben,
+`crates/compiler/src/stdlib.rs` (`GLOBALS`): Namen, Parameter mit erwarteter
+Art, optionale Parameter, Rückgabetyp, die Native-Funktion der VM,
+Dokumentation in beiden Sprachen und Aliase. Die Referenz
+[`stdlib.md`](stdlib.md) wird daraus erzeugt:
+
+```sh
+cargo run -p ekips-compiler --example gen-docs
+```
+
+Ein Test schlägt fehl, wenn die erzeugten Dateien veraltet sind.
