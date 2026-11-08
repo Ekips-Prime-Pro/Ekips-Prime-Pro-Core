@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/hub-api", "crates/bytecode", "crates/compiler"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["David Frings <dev@davidfrings.dev>"]
+repository = "https://github.com/Ekips-Prime-Pro/Ekips-Prime-Pro-Core"
+
+[workspace.dependencies]
+ekips-hub-api = { path = "crates/hub-api" }
+ekips-bytecode = { path = "crates/bytecode" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

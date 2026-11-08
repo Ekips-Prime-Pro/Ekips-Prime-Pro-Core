@@ -1,0 +1,15 @@
+[package]
+name = "ekips-compiler"
+description = "Compiler for the Ekips Prime Pro robot language"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+ekips-hub-api.workspace = true
+
+[lints]
+workspace = true

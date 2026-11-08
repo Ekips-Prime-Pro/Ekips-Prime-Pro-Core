@@ -1,0 +1,38 @@
+// Template for an FLL run: several missions after each other.
+
+const leftWheel = new Motor(Port.A);
+const rightWheel = new Motor(Port.B);
+const frontArm = new Motor(Port.C);
+const backArm = new Motor(Port.D);
+const eye = new ColorSensor(Port.E);
+const robot = new DriveBase(leftWheel, rightWheel, 56mm, 112mm);
+
+const SPEED = 60%;
+
+/* Mission 1: push the lever. */
+async function mission1() {
+  await robot.drive(45cm, SPEED);
+  await robot.turn(-30deg);
+  await frontArm.rotate(120deg);
+  await robot.drive(-10cm);
+}
+
+/* Mission 2: collect the sample and bring it home. */
+async function mission2() {
+  hub.resetHeading();
+  await robot.drive(70cm, SPEED);
+  await backArm.rotate(-0.5rot);
+  const correction = hub.heading > 0deg ? -hub.heading : 0deg;
+  await robot.turn(180deg + correction);
+  await robot.drive(70cm, 80%);
+}
+
+const missions = [mission1, mission2];
+
+async function main() {
+  for (const mission of missions) {
+    await mission();
+    await waitUntil(() => eye.sees(Color.Green)); // green card = next run
+    await wait(500ms);
+  }
+}

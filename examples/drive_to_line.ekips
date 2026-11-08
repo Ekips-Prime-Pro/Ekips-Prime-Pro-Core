@@ -1,0 +1,20 @@
+// Drive forward until the color sensor sees a black line.
+
+const robot = new DriveBase(new Motor(Port.A), new Motor(Port.B), 56mm, 112mm);
+const eye = new ColorSensor(Port.C);
+
+async function main() {
+  // Drive at most 1 m, but stop as soon as the sensor sees black.
+  // Promise.race finishes when the FIRST of the two is done.
+  await Promise.race([
+    robot.drive(100cm, 40%),
+    waitUntil(() => eye.sees(Color.Black)),
+  ]);
+  robot.stop();
+
+  if (eye.sees(Color.Black)) {
+    console.log("Found the line!");
+  } else {
+    console.log("No line within 1 m");
+  }
+}

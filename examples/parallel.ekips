@@ -1,0 +1,41 @@
+// Do several things at the same time with async/await.
+
+const leftWheel = new Motor(Port.A);
+const rightWheel = new Motor(Port.B);
+const arm = new Motor(Port.C);
+const sonar = new DistanceSensor(Port.D);
+const bumper = new ForceSensor(Port.E);
+const robot = new DriveBase(leftWheel, rightWheel, 56mm, 112mm);
+
+async function wave(times) {
+  for (let i = 0; i < times; i++) {
+    await arm.rotate(-90deg, 80%);
+    await arm.rotate(90deg, 80%);
+  }
+}
+
+async function main() {
+  // Start both movements, then wait until BOTH are finished.
+  const driving = robot.drive(80cm);
+  const lifting = arm.rotate(1.5rot, 50%);
+  await Promise.all([driving, lifting]);
+
+  // Drive slowly towards a wall and wave while doing so.
+  await Promise.all([
+    robot.drive(30cm, 20%),
+    wave(3),
+  ]);
+
+  // Wait for a wall or for the bumper, whatever happens first.
+  robot.run(30%);
+  await waitUntil(() => sonar.distance < 10cm || bumper.pressed);
+  robot.stop();
+
+  let speed = 100%;
+  while (speed > 20%) {
+    await arm.rotate(45deg, speed);
+    speed -= 20%;
+  }
+  hub.show(Math.round(hub.battery));
+  await wait(2s);
+}

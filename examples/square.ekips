@@ -1,0 +1,18 @@
+// My first program: drive a square.
+
+const leftWheel = new Motor(Port.A);
+const rightWheel = new Motor(Port.B);
+const robot = new DriveBase(leftWheel, rightWheel, 56mm, 112mm);
+
+async function square(side) {
+  for (let i = 0; i < 4; i++) {
+    await robot.drive(side);
+    await robot.turn(90deg);
+  }
+}
+
+async function main() {
+  hub.show("Hi");
+  await square(20cm);
+  await hub.beep();
+}
