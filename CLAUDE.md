@@ -29,7 +29,7 @@ include Core via a **Git tag** (`v0.x.y`).
 |---|---|
 | `crates/hub-api` | `no_std`. `Hardware` trait, `Port`, `Color`, device kinds |
 | `crates/bytecode` | `no_std`. Program container format, `Dim`, native function ids (instruction set planned) |
-| `crates/compiler` | Lexer, parser, semantic analysis, standard library table (unit checking, code generation planned) |
+| `crates/compiler` | Lexer, parser, semantic analysis with unit checking, standard library table (code generation planned) |
 | `crates/vm` | *(planned)* `no_std` + `alloc`. Bytecode interpreter with cooperative scheduler, mock hardware |
 | `examples/*.ekips` | Example programs; all of them must compile without problems |
 | `docs/en`, `docs/de` | Wiki/documentation, always in both languages |

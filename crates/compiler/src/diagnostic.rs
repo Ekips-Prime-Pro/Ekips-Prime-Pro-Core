@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 
 use crate::span::{LineIndex, Span};
 use crate::stdlib::Expect;
-use crate::types::Ty;
+use crate::types::{Dim, Ty, describe_dim, example_dim};
 
 /// Language of the messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -180,6 +180,55 @@ pub enum ErrorKind {
         /// What was given
         found: Ty,
     },
+
+    // --- Unit checking ---
+    /// Two different kinds of numbers combined with `+`, `-`, `<`, `==`, … (`20cm + 3s`)
+    UnitMismatch {
+        /// The operator as written
+        op: &'static str,
+        /// Kind of the left side
+        left: Dim,
+        /// Kind of the right side
+        right: Dim,
+    },
+    /// Two values with units multiplied (`20cm * 3cm`)
+    UnitProduct {
+        /// Kind of the left side
+        left: Dim,
+        /// Kind of the right side
+        right: Dim,
+    },
+    /// A division that has no meaning (`3 / 2s`, `20cm / 2s`)
+    UnitQuotient {
+        /// Kind of the left side
+        left: Dim,
+        /// Kind of the right side
+        right: Dim,
+    },
+    /// A variable gets a different kind of number than it had (`let d = 5cm; d = 2s;`)
+    UnitAssign {
+        /// Variable name, if simple
+        name: Option<String>,
+        /// Kind it had
+        old: Dim,
+        /// Kind it gets
+        new: Dim,
+    },
+    /// `++`/`--` on a number with unit
+    UnitIncrement(Dim),
+    /// An argument with the wrong kind of number (`robot.drive(90deg)`)
+    WrongArgUnit {
+        /// Function name as written
+        name: String,
+        /// Parameter name
+        param: &'static str,
+        /// Kind the parameter needs
+        expected: Dim,
+        /// Kind given
+        found: Dim,
+        /// A similar command that takes this kind (`robot.turn`)
+        alternative: Option<String>,
+    },
 }
 
 /// One problem with its position.
@@ -196,6 +245,15 @@ pub struct Diagnostic {
 
 fn code(s: &str) -> String {
     format!("`{s}`")
+}
+
+/// "Write the unit directly after the number, e.g. `20cm`."
+fn unit_missing_hint(dim: Dim, lang: Lang) -> Option<String> {
+    let ex = example_dim(dim);
+    Some(match lang {
+        Lang::En => format!("Write the unit directly after the number, e.g. `{ex}`."),
+        Lang::De => format!("Schreibe die Einheit direkt hinter die Zahl, z. B. `{ex}`."),
+    })
 }
 
 fn capitalize(s: &str) -> String {
@@ -536,6 +594,67 @@ impl Diagnostic {
                     format!("`{name}` needs {e} for `{param}`, but gets {f}.")
                 }
             }
+            K::UnitMismatch { op, left, right } => {
+                let (l, r) = (
+                    capitalize(describe_dim(*left, lang)),
+                    describe_dim(*right, lang),
+                );
+                if de {
+                    format!("{l} und {r} kann man nicht mit `{op}` verbinden.")
+                } else {
+                    format!("{l} and {r} can not be combined with `{op}`.")
+                }
+            }
+            K::UnitProduct { left, right } => {
+                let (l, r) = (describe_dim(*left, lang), describe_dim(*right, lang));
+                if de {
+                    format!("Zwei Werte mit Einheit kann man nicht malnehmen ({l} mal {r}).")
+                } else {
+                    format!("Two values with units can not be multiplied ({l} times {r}).")
+                }
+            }
+            K::UnitQuotient { left, right } => {
+                let (l, r) = (
+                    capitalize(describe_dim(*left, lang)),
+                    describe_dim(*right, lang),
+                );
+                if de {
+                    format!("{l} kann man nicht durch {r} teilen.")
+                } else {
+                    format!("{l} can not be divided by {r}.")
+                }
+            }
+            K::UnitAssign { name, old, new } => {
+                let (o, n) = (describe_dim(*old, lang), describe_dim(*new, lang));
+                match (name, de) {
+                    (Some(v), true) => format!("`{v}` ist {o}, soll aber {n} werden."),
+                    (Some(v), false) => format!("`{v}` holds {o}, but gets {n}."),
+                    (None, true) => format!("Das hier ist {o}, soll aber {n} werden."),
+                    (None, false) => format!("This holds {o}, but gets {n}."),
+                }
+            }
+            K::UnitIncrement(dim) => {
+                let d = describe_dim(*dim, lang);
+                if de {
+                    format!("`++` und `--` gibt es nur für Zahlen ohne Einheit, das hier ist {d}.")
+                } else {
+                    format!("`++` and `--` only work for plain numbers, but this is {d}.")
+                }
+            }
+            K::WrongArgUnit {
+                name,
+                param,
+                expected,
+                found,
+                ..
+            } => {
+                let (e, f) = (describe_dim(*expected, lang), describe_dim(*found, lang));
+                if de {
+                    format!("Bei `{name}` muss `{param}` {e} sein, ist aber {f}.")
+                } else {
+                    format!("`{name}` needs {e} for `{param}`, but gets {f}.")
+                }
+            }
         }
     }
 
@@ -750,6 +869,79 @@ impl Diagnostic {
                     )
                 }
             }
+            K::UnitMismatch { op, left, right } => {
+                if *left == Dim::Number || *right == Dim::Number {
+                    let other = if *left == Dim::Number { *right } else { *left };
+                    unit_missing_hint(other, lang)
+                } else {
+                    let ex = example_dim(*left);
+                    if de {
+                        Some(format!(
+                            "Beide Seiten brauchen die gleiche Art von Einheit, z. B. `{ex} {op} {ex}`."
+                        ))
+                    } else {
+                        Some(format!(
+                            "Both sides need the same kind of unit, e.g. `{ex} {op} {ex}`."
+                        ))
+                    }
+                }
+            }
+            K::UnitProduct { .. } => t(
+                "One side must be a plain number, e.g. `2 * 90deg`.",
+                "Eine Seite muss eine Zahl ohne Einheit sein, z. B. `2 * 90deg`.",
+            ),
+            K::UnitQuotient { .. } => t(
+                "You can divide by a plain number (`20cm / 2` is `10cm`) or by the same kind (`20cm / 5cm` is `4`).",
+                "Teilen kann man durch eine Zahl ohne Einheit (`20cm / 2` ist `10cm`) oder durch die gleiche Art (`20cm / 5cm` ist `4`).",
+            ),
+            K::UnitAssign { old, new, .. } => {
+                if *new == Dim::Number {
+                    unit_missing_hint(*old, lang)
+                } else {
+                    t(
+                        "Use a new variable for the other kind of value.",
+                        "Benutze eine neue Variable für die andere Art von Wert.",
+                    )
+                }
+            }
+            K::UnitIncrement(dim) => {
+                let one = match dim {
+                    Dim::Length => "1cm",
+                    Dim::Angle => "1deg",
+                    Dim::Time => "1s",
+                    Dim::Percent => "1%",
+                    Dim::Number => "1",
+                };
+                if de {
+                    Some(format!("Schreibe stattdessen `x += {one}`."))
+                } else {
+                    Some(format!("Write `x += {one}` instead."))
+                }
+            }
+            K::WrongArgUnit {
+                expected,
+                found,
+                alternative,
+                ..
+            } => match alternative {
+                Some(alt) => {
+                    let f = describe_dim(*found, lang);
+                    if de {
+                        Some(format!("Meintest du `{alt}(…)`? Dort passt {f}."))
+                    } else {
+                        Some(format!("Did you mean `{alt}(…)`? It takes {f}."))
+                    }
+                }
+                None if *found == Dim::Number => unit_missing_hint(*expected, lang),
+                None => {
+                    let (e, ex) = (describe_dim(*expected, lang), example_dim(*expected));
+                    if de {
+                        Some(format!("Hier passt {e}, z. B. `{ex}`."))
+                    } else {
+                        Some(format!("Use {e}, e.g. `{ex}`."))
+                    }
+                }
+            },
             K::WrongArgType { expected, .. } => {
                 let example = match expected {
                     Expect::Is(Ty::Port) => Some("Port.A"),

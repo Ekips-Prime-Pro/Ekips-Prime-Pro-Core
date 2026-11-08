@@ -8,7 +8,7 @@ German, with a hint on how to fix them.
 |---|---|---|
 | Lexer | `lexer.rs` | unknown characters, unknown units, unclosed texts/comments |
 | Parser | `parser.rs` | syntax errors, misspelled keywords, `await` outside `async`, missing `main` |
-| Semantic analysis | `sema.rs` | unknown names, scopes, `const`, wrong use of built-ins (this page) |
+| Semantic analysis | `sema.rs` | unknown names, scopes, `const`, wrong use of built-ins, units (this page) |
 
 API: `ekips_compiler::parse(source)` runs lexer and parser only,
 `ekips_compiler::check(source)` also runs semantic analysis. If there are
@@ -79,6 +79,30 @@ is an error.
 
 Code generation and the language server use these instead of resolving
 names again.
+
+## Unit checking
+
+Every number has a *kind*: `Length` (`mm`, `cm`), `Angle` (`deg`, `°`,
+`rot`), `Time` (`s`, `ms`), `Percent` (`%`) or a plain `Number`. The
+compiler derives the kind of every calculation and checks:
+
+| Operation | Rule | Example OK | Error |
+|---|---|---|---|
+| `+` `-` `%` | same kind; result has that kind | `20cm + 5mm` | `20cm + 3s`, `20cm + 5` |
+| `<` `<=` `>` `>=` `==` `!=` | same kind | `sonar.distance < 10cm` | `sonar.distance < 10` |
+| `*` | at most one side has a unit | `2 * 90deg` | `20cm * 3cm` |
+| `/` | by a plain number (keeps kind) or by the same kind (plain number) | `20cm / 2`, `20cm / 5cm` | `3 / 2s`, `20cm / 2s` |
+| `=`, `+=`, … | a variable keeps its kind | `d = 7mm` | `let d = 5cm; d = 2s;` |
+| `++` `--` | only plain numbers | `i++` | `d++` with `d = 5cm` |
+| arguments | the kind from the standard library table | `robot.drive(20cm)` | `robot.drive(90deg)` |
+
+- A plain `0` fits every kind: `hub.heading > 0`, `let total = 0; total += 5cm;`.
+- Unknown values (parameters, list items) are never unit errors.
+- For a wrong first argument, the compiler suggests a sibling command that
+  takes that kind: `robot.drive(90deg)` → *Did you mean `robot.turn(…)`?*
+- `Math.abs`, `Math.min`, `Math.max`, `Math.round`, `Math.floor`,
+  `Math.ceil` keep the kind of their input; all inputs of `min`/`max` must
+  have the same kind.
 
 ## Standard library table
 

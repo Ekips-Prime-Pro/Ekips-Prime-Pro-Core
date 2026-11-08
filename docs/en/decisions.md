@@ -47,3 +47,15 @@ says what was decided and why.
 - **Why:** Students who later learn JavaScript/TypeScript should not have to
   unlearn anything. The "used before created" error replaces the runtime
   error JavaScript would give.
+
+## D6 – Units are checked at compile time, by kind
+
+- **Decision:** The compiler infers a kind (`Length`, `Angle`, `Time`,
+  `Percent`, `Number`) for every number and rejects mixing kinds. Units are
+  converted to one base unit per kind at compile time (mm, degree, ms,
+  percent), so `20cm + 5mm` is just `200 + 5`. Products and quotients of two
+  units (`cm²`, `cm/s`) are not supported. A plain `0` fits every kind;
+  values of unknown kind are never errors.
+- **Why:** Most robot bugs in FLL are wrong numbers (driving 90 instead of
+  turning 90). Catching them before the robot moves saves a lot of time.
+  Leaving out compound units keeps the rules simple enough for grade 7.

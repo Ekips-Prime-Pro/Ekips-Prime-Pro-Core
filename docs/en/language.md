@@ -11,8 +11,8 @@ to be given to an AI assistant as context.
 > **Implementation status:** the parser implements all syntax on this page.
 > Semantic analysis checks names, scopes and the use of the standard
 > library (see [compiler.md](compiler.md), full list of built-ins in
-> [stdlib.md](stdlib.md)). Unit checking, code generation and the VM are
-> not written yet.
+> [stdlib.md](stdlib.md)) and units. Code generation and the VM are not
+> written yet.
 
 ## 1. A first program
 
@@ -62,8 +62,8 @@ A unit is written directly after a number, without a space.
 
 Values keep their unit when you calculate: `20cm + 5mm` is `20.5cm`,
 `2 * 90deg` is `180deg`. Mixing kinds (`20cm + 3s`) is an error, and so is
-passing the wrong kind to a command (`robot.drive(90deg)`). *(unit checking
-is planned)*
+passing the wrong kind to a command (`robot.drive(90deg)`). A plain `0`
+fits every kind (`hub.heading > 0`). All rules: [compiler.md](compiler.md#unit-checking).
 
 `%` after a number is a percentage. Between two values it is the remainder
 operator: `10 % 3` is `1`.

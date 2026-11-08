@@ -50,3 +50,16 @@ zuletzt. Jeder Eintrag sagt, was entschieden wurde und warum.
 - **Warum:** Wer später JavaScript/TypeScript lernt, soll nichts umlernen
   müssen. Der Fehler „benutzt, bevor erstellt“ ersetzt den Laufzeitfehler,
   den JavaScript geben würde.
+
+## D6 – Einheiten werden beim Übersetzen geprüft, nach Art
+
+- **Entscheidung:** Der Compiler leitet für jede Zahl eine Art ab (`Length`,
+  `Angle`, `Time`, `Percent`, `Number`) und lehnt das Mischen von Arten ab.
+  Einheiten werden beim Übersetzen in eine Grundeinheit pro Art umgerechnet
+  (mm, Grad, ms, Prozent), `20cm + 5mm` ist also einfach `200 + 5`. Produkte
+  und Quotienten zweier Einheiten (`cm²`, `cm/s`) gibt es nicht. Eine
+  einfache `0` passt zu jeder Art; Werte unbekannter Art sind nie Fehler.
+- **Warum:** Die meisten Roboterfehler in der FLL sind falsche Zahlen (90
+  fahren statt 90 drehen). Sie zu finden, bevor sich der Roboter bewegt, spart
+  viel Zeit. Ohne zusammengesetzte Einheiten bleiben die Regeln einfach genug
+  für Klasse 7.

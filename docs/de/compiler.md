@@ -8,7 +8,7 @@ auf Englisch und Deutsch, mit einem Hinweis, wie man sie behebt.
 |---|---|---|
 | Lexer | `lexer.rs` | unbekannte Zeichen, unbekannte Einheiten, nicht geschlossene Texte/Kommentare |
 | Parser | `parser.rs` | Syntaxfehler, falsch geschriebene Schlüsselwörter, `await` außerhalb von `async`, fehlendes `main` |
-| Semantische Analyse | `sema.rs` | unbekannte Namen, Gültigkeitsbereiche, `const`, falsche Benutzung eingebauter Dinge (diese Seite) |
+| Semantische Analyse | `sema.rs` | unbekannte Namen, Gültigkeitsbereiche, `const`, falsche Benutzung eingebauter Dinge, Einheiten (diese Seite) |
 
 API: `ekips_compiler::parse(source)` führt nur Lexer und Parser aus,
 `ekips_compiler::check(source)` zusätzlich die semantische Analyse. Gibt es
@@ -82,6 +82,33 @@ Ordnung, `motor.rotat` ist ein Fehler.
 
 Codeerzeugung und Language Server benutzen diese Ergebnisse, statt Namen
 noch einmal aufzulösen.
+
+## Einheitenprüfung
+
+Jede Zahl hat eine *Art*: `Length` (Länge: `mm`, `cm`), `Angle` (Winkel:
+`deg`, `°`, `rot`), `Time` (Zeit: `s`, `ms`), `Percent` (Prozent: `%`) oder
+eine einfache `Number` (Zahl ohne Einheit). Der Compiler leitet die Art jeder
+Rechnung ab und prüft:
+
+| Operation | Regel | Beispiel OK | Fehler |
+|---|---|---|---|
+| `+` `-` `%` | gleiche Art; das Ergebnis hat diese Art | `20cm + 5mm` | `20cm + 3s`, `20cm + 5` |
+| `<` `<=` `>` `>=` `==` `!=` | gleiche Art | `sonar.distance < 10cm` | `sonar.distance < 10` |
+| `*` | höchstens eine Seite hat eine Einheit | `2 * 90deg` | `20cm * 3cm` |
+| `/` | durch eine Zahl ohne Einheit (Art bleibt) oder durch die gleiche Art (Zahl ohne Einheit) | `20cm / 2`, `20cm / 5cm` | `3 / 2s`, `20cm / 2s` |
+| `=`, `+=`, … | eine Variable behält ihre Art | `d = 7mm` | `let d = 5cm; d = 2s;` |
+| `++` `--` | nur Zahlen ohne Einheit | `i++` | `d++` mit `d = 5cm` |
+| Argumente | die Art aus der Standardbibliothek-Tabelle | `robot.drive(20cm)` | `robot.drive(90deg)` |
+
+- Eine einfache `0` passt zu jeder Art: `hub.heading > 0`,
+  `let total = 0; total += 5cm;`.
+- Unbekannte Werte (Parameter, Listenelemente) sind nie Einheitenfehler.
+- Bei einem falschen ersten Argument schlägt der Compiler einen
+  Geschwister-Befehl vor, der diese Art nimmt: `robot.drive(90deg)` →
+  *Meintest du `robot.turn(…)`?*
+- `Math.abs`, `Math.min`, `Math.max`, `Math.round`, `Math.floor`,
+  `Math.ceil` behalten die Art ihrer Eingabe; alle Eingaben von
+  `min`/`max` müssen die gleiche Art haben.
 
 ## Tabelle der Standardbibliothek
 

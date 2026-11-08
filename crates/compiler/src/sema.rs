@@ -155,6 +155,8 @@ enum Lookup {
     Found {
         member: &'static Member,
         full_name: String,
+        /// The other members of the same class or namespace
+        siblings: &'static [Member],
     },
     /// Receiver of unknown type; these members could match
     Dynamic(Vec<&'static Member>),
@@ -616,6 +618,7 @@ impl Analyzer {
                                 Lookup::Found {
                                     member,
                                     full_name: format!("{}.{}", g.name, property.name),
+                                    siblings: members,
                                 }
                             }),
                         GlobalKind::Class { .. } => {
@@ -684,7 +687,11 @@ impl Analyzer {
                 self.out
                     .members
                     .insert(property.span, MemberRes::Instance(member));
-                Lookup::Found { member, full_name }
+                Lookup::Found {
+                    member,
+                    full_name,
+                    siblings: members,
+                }
             }
             None => Lookup::None,
         }
@@ -716,7 +723,9 @@ impl Analyzer {
     /// `object.property` used as a value (not called).
     fn member_value(&mut self, object: &Expr, property: &Ident) -> Ty {
         match self.lookup_member(object, property) {
-            Lookup::Found { member, full_name } => match member.kind {
+            Lookup::Found {
+                member, full_name, ..
+            } => match member.kind {
                 MemberKind::Method(_) => {
                     self.error(ErrorKind::MustCall(full_name), property.span);
                     Ty::Any
@@ -752,7 +761,7 @@ impl Analyzer {
         match &callee.kind {
             ExprKind::Ident(id) => match self.resolve(id) {
                 Some(Resolution::Builtin(g)) => match g.kind {
-                    GlobalKind::Function(sig) => self.check_call(call, g.name, &sig, args),
+                    GlobalKind::Function(sig) => self.check_call(call, g.name, &sig, args, &[]),
                     GlobalKind::Class { .. } => {
                         self.error(ErrorKind::MissingNew(g.name.into()), id.span);
                         self.walk_args(args);
@@ -798,8 +807,14 @@ impl Analyzer {
                 }
             },
             ExprKind::Member { object, property } => match self.lookup_member(object, property) {
-                Lookup::Found { member, full_name } => match member.kind {
-                    MemberKind::Method(sig) => self.check_call(call, &full_name, &sig, args),
+                Lookup::Found {
+                    member,
+                    full_name,
+                    siblings,
+                } => match member.kind {
+                    MemberKind::Method(sig) => {
+                        self.check_call(call, &full_name, &sig, args, siblings)
+                    }
                     _ => {
                         self.error(ErrorKind::NotCallable(Some(full_name)), property.span);
                         self.walk_args(args);
@@ -843,7 +858,17 @@ impl Analyzer {
     }
 
     /// Checks the arguments of a built-in call and returns the result type.
-    fn check_call(&mut self, call: &Expr, name: &str, sig: &Signature, args: &[Expr]) -> Ty {
+    ///
+    /// `siblings` are the other members of the same class; they are used to
+    /// suggest `robot.turn` for `robot.drive(90deg)`.
+    fn check_call(
+        &mut self,
+        call: &Expr,
+        name: &str,
+        sig: &Signature,
+        args: &[Expr],
+        siblings: &'static [Member],
+    ) -> Ty {
         let types = self.walk_args(args);
         let n = args.len();
         if n < sig.min_args() || sig.max_args().is_some_and(|max| n > max) {
@@ -863,15 +888,33 @@ impl Analyzer {
             match param.expect {
                 Expect::Any => {}
                 Expect::Number => match ty {
-                    Ty::Num(_) => {
-                        if number_kind.is_none() {
-                            number_kind = Some(ty);
+                    Ty::Num(found) => match number_kind {
+                        None => number_kind = Some(ty),
+                        Some(Ty::Num(first)) if first != found && !is_zero_literal(arg) => {
+                            self.error(
+                                ErrorKind::WrongArgUnit {
+                                    name: name.into(),
+                                    param: param.name,
+                                    expected: first,
+                                    found,
+                                    alternative: None,
+                                },
+                                arg.span,
+                            );
                         }
-                    }
+                        Some(_) => {}
+                    },
                     Ty::Any => {}
                     _ => self.wrong_arg_type(name, param.name, param.expect, ty, arg.span),
                 },
-                Expect::Is(expected) => self.check_arg(name, param, expected, arg, ty),
+                Expect::Is(expected) => {
+                    let alternative = if i == 0 {
+                        alternative_for(name, siblings, ty)
+                    } else {
+                        None
+                    };
+                    self.check_arg(name, param, expected, arg, ty, alternative);
+                }
             }
         }
         match sig.returns {
@@ -885,17 +928,29 @@ impl Analyzer {
         name: &str,
         param: &stdlib::Param,
         expected: Ty,
-        _arg: &Expr,
+        arg: &Expr,
         found: Ty,
+        alternative: Option<String>,
     ) {
         if found == Ty::Any || found == expected {
             return;
         }
-        if let (Ty::Num(_), Ty::Num(_)) = (expected, found) {
-            // Different kinds of numbers: checked by the unit checker.
+        if let (Ty::Num(expected), Ty::Num(found)) = (expected, found) {
+            if !is_zero_literal(arg) {
+                self.error(
+                    ErrorKind::WrongArgUnit {
+                        name: name.into(),
+                        param: param.name,
+                        expected,
+                        found,
+                        alternative,
+                    },
+                    arg.span,
+                );
+            }
             return;
         }
-        self.wrong_arg_type(name, param.name, param.expect, found, _arg.span);
+        self.wrong_arg_type(name, param.name, param.expect, found, arg.span);
     }
 
     fn wrong_arg_type(
@@ -929,7 +984,7 @@ impl Analyzer {
                 name,
                 kind: GlobalKind::Class { ctor, .. },
                 ..
-            })) => self.check_call(e, name, ctor, args),
+            })) => self.check_call(e, name, ctor, args, &[]),
             Some(_) => {
                 self.walk_args(args);
                 self.error(ErrorKind::NotAClass(Some(id.name.clone())), id.span);
@@ -986,39 +1041,148 @@ impl Analyzer {
         }
     }
 
-    // Hooks for the unit checker (filled in by later steps).
+    // ------------------------------------------------------------------
+    // Units
+    // ------------------------------------------------------------------
 
-    fn check_update(&mut self, _e: &Expr, _op: UpdateOp, _t: Ty) {}
-
-    fn check_assign(
-        &mut self,
-        _e: &Expr,
-        _op: AssignOp,
-        _target: &Expr,
-        _value: &Expr,
-        _t: Ty,
-        _v: Ty,
-    ) {
-    }
-
-    fn binary(&mut self, _e: &Expr, op: BinaryOp, _lhs: &Expr, _rhs: &Expr, l: Ty, r: Ty) -> Ty {
-        use BinaryOp as B;
-        match op {
-            B::Eq | B::NotEq | B::Lt | B::Le | B::Gt | B::Ge => Ty::Bool,
-            B::And | B::Or => {
-                if l == r {
-                    l
-                } else {
-                    Ty::Any
-                }
+    /// `x++` / `x--`: only for plain numbers.
+    fn check_update(&mut self, e: &Expr, _op: UpdateOp, t: Ty) {
+        if let Ty::Num(d) = t {
+            if d != Dim::Number {
+                self.error(ErrorKind::UnitIncrement(d), e.span);
             }
-            B::Add if l == Ty::Text || r == Ty::Text => Ty::Text,
-            B::Add | B::Sub | B::Mul | B::Div | B::Rem => match (l, r) {
-                (Ty::Num(a), Ty::Num(b)) if a == b && matches!(op, B::Add | B::Sub | B::Rem) => l,
-                _ => Ty::Any,
-            },
         }
     }
+
+    /// `x = v`, `x += v`, …: the variable keeps its kind of number.
+    fn check_assign(&mut self, e: &Expr, op: AssignOp, target: &Expr, value: &Expr, t: Ty, v: Ty) {
+        let new = match op {
+            AssignOp::Assign => {
+                if is_zero_literal(value) {
+                    return;
+                }
+                v
+            }
+            _ => {
+                let bop = match op {
+                    AssignOp::Add => BinaryOp::Add,
+                    AssignOp::Sub => BinaryOp::Sub,
+                    AssignOp::Mul => BinaryOp::Mul,
+                    AssignOp::Div => BinaryOp::Div,
+                    AssignOp::Rem => BinaryOp::Rem,
+                    AssignOp::Assign => unreachable!("handled above"),
+                };
+                let before = self.out.diagnostics.len();
+                let result = self.binary(e, bop, target, value, t, v);
+                if self.out.diagnostics.len() != before {
+                    // The operator itself was already reported.
+                    return;
+                }
+                result
+            }
+        };
+        if let (Ty::Num(old), Ty::Num(new)) = (t, new) {
+            if old != new {
+                self.error(
+                    ErrorKind::UnitAssign {
+                        name: path_text(target),
+                        old,
+                        new,
+                    },
+                    e.span,
+                );
+            }
+        }
+    }
+
+    /// Type of `l op r`, with unit checks.
+    ///
+    /// - `+`, `-`, `%`, comparisons: both sides must be the same kind
+    ///   (a plain `0` fits every kind).
+    /// - `*`: at most one side may have a unit.
+    /// - `/`: by a plain number (keeps the kind) or by the same kind (gives
+    ///   a plain number).
+    fn binary(&mut self, e: &Expr, op: BinaryOp, lhs: &Expr, rhs: &Expr, l: Ty, r: Ty) -> Ty {
+        use BinaryOp as B;
+        if op == B::Add && (l == Ty::Text || r == Ty::Text) {
+            return Ty::Text;
+        }
+        if matches!(op, B::And | B::Or) {
+            return if l == r { l } else { Ty::Any };
+        }
+        let (Ty::Num(a), Ty::Num(b)) = (l, r) else {
+            return match op {
+                B::Eq | B::NotEq | B::Lt | B::Le | B::Gt | B::Ge => Ty::Bool,
+                _ => Ty::Any,
+            };
+        };
+        let zero = is_zero_literal(lhs) || is_zero_literal(rhs);
+        let symbol = match op {
+            B::Add => "+",
+            B::Sub => "-",
+            B::Rem => "%",
+            B::Eq => "==",
+            B::NotEq => "!=",
+            B::Lt => "<",
+            B::Le => "<=",
+            B::Gt => ">",
+            B::Ge => ">=",
+            B::Mul => "*",
+            B::Div => "/",
+            B::And | B::Or => unreachable!("handled above"),
+        };
+        match op {
+            B::Add | B::Sub | B::Rem | B::Eq | B::NotEq | B::Lt | B::Le | B::Gt | B::Ge => {
+                if a != b && !zero {
+                    self.error(
+                        ErrorKind::UnitMismatch {
+                            op: symbol,
+                            left: a,
+                            right: b,
+                        },
+                        e.span,
+                    );
+                }
+                match op {
+                    B::Add | B::Sub | B::Rem if a == b => l,
+                    B::Add | B::Sub => Ty::Num(if is_zero_literal(lhs) { b } else { a }),
+                    B::Rem => l,
+                    _ => Ty::Bool,
+                }
+            }
+            B::Mul => match (a, b) {
+                (Dim::Number, _) => r,
+                (_, Dim::Number) => l,
+                _ => {
+                    self.error(ErrorKind::UnitProduct { left: a, right: b }, e.span);
+                    Ty::Any
+                }
+            },
+            B::Div => match (a, b) {
+                (_, Dim::Number) => l,
+                _ if a == b => Ty::Num(Dim::Number),
+                _ => {
+                    self.error(ErrorKind::UnitQuotient { left: a, right: b }, e.span);
+                    Ty::Any
+                }
+            },
+            B::And | B::Or => unreachable!("handled above"),
+        }
+    }
+}
+
+/// For `robot.drive(90deg)`: a sibling command whose first parameter takes
+/// the given kind of number (`robot.turn`).
+fn alternative_for(name: &str, siblings: &'static [Member], found: Ty) -> Option<String> {
+    let Ty::Num(found) = found else { return None };
+    let sibling = siblings.iter().find(|m| match m.kind {
+        MemberKind::Method(sig) => {
+            sig.params.first().map(|p| p.expect) == Some(Expect::Is(Ty::Num(found)))
+        }
+        _ => false,
+    })?;
+    let owner = name.rsplit_once('.').map_or(name, |(owner, _)| owner);
+    Some(format!("{owner}.{}", sibling.name))
 }
 
 /// `(alias, name)` pairs of members, for suggestions.

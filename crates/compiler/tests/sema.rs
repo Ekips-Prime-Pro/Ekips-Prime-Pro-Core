@@ -478,7 +478,7 @@ fn every_semantic_message_has_text_and_hint_in_both_languages() {
     let source = program(
         "await wiat(1s);\nawait robot.drvie(2cm);\nlet x = 1;\nlet x = 2;\n\
          const hub = 1;\nconsole.log(y);\nlet y = 1;\nconst C = 1;\nC = 2;\n\
-         arm.angle = 1;\nrobot.stop;\nconst h = Math;\nMotor(Port.A);\n\
+         arm.angle = 1deg;\nrobot.stop;\nconst h = Math;\nMotor(Port.A);\n\
          new wait();\narm.angle();\nrobot.drive();\nnew Motor(1);",
     );
     let result = check(&source);
